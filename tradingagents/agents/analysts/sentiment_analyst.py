@@ -5,13 +5,21 @@ the old version had a prompt that demanded social-media analysis but the
 only tool available was Yahoo Finance news — which led LLMs to fabricate
 Reddit/X/StockTwits content under prompt pressure (verified live).
 
-The redesigned agent pre-fetches three complementary data sources before
-the LLM is invoked and injects them into the prompt as structured blocks:
+The redesigned agent pre-fetches complementary data sources before
+the LLM is invoked and injects them into the prompt as structured blocks.
+Data source selection is market-aware:
 
-  1. News headlines     — Yahoo Finance (institutional framing)
-  2. StockTwits messages — retail-trader posts indexed by cashtag, with
-                           user-labeled Bullish/Bearish sentiment tags
-  3. Reddit posts        — r/wallstreetbets, r/stocks, r/investing
+  US/Global markets:
+    1. News headlines     — Yahoo Finance (institutional framing)
+    2. StockTwits messages — retail-trader posts indexed by cashtag, with
+                             user-labeled Bullish/Bearish sentiment tags
+    3. Reddit posts        — r/wallstreetbets, r/stocks, r/investing
+
+  Chinese/HK markets (.HK, .SS, .SZ suffixes):
+    1. News headlines      — Yahoo Finance (global institutional view)
+    2. Xueqiu (雪球) posts  — Chinese investment community discussion
+    3. Eastmoney news      — Chinese domestic financial media (东方财富)
+    4. Reddit posts        — Global perspective (de-emphasized for C/HK)
 
 The agent does not use tool-calling; the data is in the prompt from
 turn 0. Output uses the structured-output pattern (json_schema for
@@ -41,6 +49,9 @@ from tradingagents.agents.utils.structured import (
 )
 from tradingagents.dataflows.reddit import fetch_reddit_posts
 from tradingagents.dataflows.stocktwits import fetch_stocktwits_messages
+from tradingagents.dataflows.xueqiu import fetch_xueqiu_posts
+from tradingagents.dataflows.akshare_cn import fetch_eastmoney_news
+from tradingagents.dataflows.symbol_utils import detect_market
 
 
 def _seven_days_back(trade_date: str) -> str:
@@ -63,21 +74,46 @@ def create_sentiment_analyst(llm):
         start_date = _seven_days_back(end_date)
         instrument_context = get_instrument_context_from_state(state)
 
-        # Pre-fetch all three sources. Each fetcher degrades gracefully and
-        # returns a string (no exceptions surface from here), so the LLM
-        # always sees something — either real data or a clear placeholder.
-        news_block = get_news.func(ticker, start_date, end_date)
-        stocktwits_block = fetch_stocktwits_messages(ticker, limit=30)
-        reddit_block = fetch_reddit_posts(ticker)
+        # Determine market type to select appropriate data sources
+        market = detect_market(ticker)
 
-        system_message = _build_system_message(
-            ticker=ticker,
-            start_date=start_date,
-            end_date=end_date,
-            news_block=news_block,
-            stocktwits_block=stocktwits_block,
-            reddit_block=reddit_block,
-        )
+        # Pre-fetch data sources based on market type
+        # Each fetcher degrades gracefully and returns a string (no exceptions)
+        news_block = get_news.func(ticker, start_date, end_date)
+
+        if market in ("HK", "CN"):
+            # Chinese/HK markets: use Xueqiu + Eastmoney Chinese news (skip StockTwits)
+            xueqiu_block = fetch_xueqiu_posts(ticker, limit=20)
+            eastmoney_block = fetch_eastmoney_news(ticker, limit=15)
+            # Skip Reddit entirely: HK/CN coverage is negligible and unauthenticated
+            # requests trip Reddit's per-IP 429 rate limit, adding latency + log noise
+            # for no signal. Xueqiu is the community-sentiment source for these markets.
+            reddit_block = f"<Reddit skipped for {ticker}: negligible HK/CN coverage; using Xueqiu instead>"
+            # Skip StockTwits (404s on HK tickers) - use empty placeholder
+            stocktwits_block = f"<StockTwits skipped for {ticker}: not supported for Chinese/HK markets>"
+
+            system_message = _build_system_message_cn(
+                ticker=ticker,
+                start_date=start_date,
+                end_date=end_date,
+                news_block=news_block,
+                xueqiu_block=xueqiu_block,
+                eastmoney_block=eastmoney_block,
+                reddit_block=reddit_block,
+            )
+        else:
+            # US/Global markets: use StockTwits + Reddit (original behavior)
+            stocktwits_block = fetch_stocktwits_messages(ticker, limit=30)
+            reddit_block = fetch_reddit_posts(ticker)
+
+            system_message = _build_system_message(
+                ticker=ticker,
+                start_date=start_date,
+                end_date=end_date,
+                news_block=news_block,
+                stocktwits_block=stocktwits_block,
+                reddit_block=reddit_block,
+            )
 
         prompt = ChatPromptTemplate.from_messages(
             [
@@ -179,6 +215,83 @@ Fill the following fields:
 - **overall_score**: A number from 0 (maximally bearish) to 10 (maximally bullish); 5 is neutral. Keep it consistent with overall_band.
 - **confidence**: low / medium / high, based on data quality and sample size.
 - **narrative**: Full source-by-source breakdown, divergences, dominant narrative themes, catalysts and risks, and a markdown summary table of key sentiment signals (direction, source, supporting evidence).
+
+{get_language_instruction()}"""
+
+
+def _build_system_message_cn(
+    *,
+    ticker: str,
+    start_date: str,
+    end_date: str,
+    news_block: str,
+    xueqiu_block: str,
+    eastmoney_block: str,
+    reddit_block: str,
+) -> str:
+    """Assemble sentiment-analyst system message for Chinese/HK markets.
+
+    Replaces StockTwits with Xueqiu (雪球) discussion and adds Eastmoney
+    (东方财富) Chinese news for better local market coverage.
+    """
+    return f"""You are a financial market sentiment analyst. Your task is to produce a comprehensive sentiment report for {ticker} covering the period from {start_date} to {end_date}, drawing on multiple data sources that have already been collected for you.
+
+## Data sources (pre-fetched, in this prompt)
+
+### News headlines — Yahoo Finance, past 7 days
+Institutional framing. Fact-driven, slower-moving signal.
+
+<start_of_news>
+{news_block}
+<end_of_news>
+
+### Xueqiu (雪球) discussion posts — Chinese investment community
+Retail-trader sentiment from China's largest investment forum. Posts are in Chinese; analyze for sentiment keywords (看涨=bullish, 看跌=bearish, 买入=buy, 卖出=sell, 利好/利空=positive/negative catalysts).
+
+<start_of_xueqiu>
+{xueqiu_block}
+<end_of_xueqiu>
+
+### Eastmoney (东方财富) Chinese news — domestic financial media
+Local Chinese financial news and analysis. Provides institutional perspective from within the Greater China market ecosystem.
+
+<start_of_eastmoney>
+{eastmoney_block}
+<end_of_eastmoney>
+
+### Reddit posts — r/wallstreetbets, r/stocks, r/investing (past 7 days)
+Global/USD-centric discussion. Lower weight for HK/CN stocks as signal is weak, but check for any US ADR or macro China flow narratives.
+
+<start_of_reddit>
+{reddit_block}
+<end_of_reddit>
+
+## How to analyze this data (best practices for Chinese/HK markets)
+
+1. **Prioritize Xueqiu sentiment for retail mood.** Xueqiu is the dominant Chinese investment community — treat its bullish/bearish keyword density as your primary retail-sentiment signal, similar to how StockTwits works for US stocks.
+
+2. **Weight Eastmoney news for local institutional framing.** Chinese financial media often frames the same events differently than Western outlets (Yahoo Finance). Cross-compare the two for divergences that may indicate information asymmetry.
+
+3. **Use Reddit sparingly for Chinese tickers.** Most discussion on Reddit about HK/CN stocks is either ADR-related or from non-local perspectives. Flag any macro "China flow" narratives but don't overweight.
+
+4. **Look for Mandarin narrative themes.** Chinese retail often discusses regulatory policy (监管), earnings surprises (业绩), sector rotation (板块轮动), and mainland-HK arbitrage (AH溢价). Identify recurring terms across Xueqiu posts.
+
+5. **Distinguish local catalysts from global.** Eastmoney may report domestic policy changes (e.g., PBOC liquidity injections, HKEX rule changes) before Western news picks them up — these are local alpha sources.
+
+6. **Be honest about data limits.** If Xueqiu returned an unavailable placeholder (common for less-discussed stocks), or Eastmoney has few articles, flag this in `confidence`. Reddit being silent on a Chinese ticker is expected, not a signal.
+
+7. **Identify catalysts and risks** that emerge across sources — earnings, regulatory announcements, macro China headlines, ADR delisting risks, etc.
+
+8. **Past sentiment is not predictive.** Frame conclusions as signal for the trader to weigh alongside fundamentals and technicals, not as a price call.
+
+## Output fields
+
+Fill the following fields:
+
+- **overall_band**: Exactly one of Bullish / Mildly Bullish / Neutral / Mixed / Mildly Bearish / Bearish. Use Mixed when sources point in clearly different directions; Neutral only when all sources are genuinely silent.
+- **overall_score**: A number from 0 (maximally bearish) to 10 (maximally bullish); 5 is neutral. Keep it consistent with overall_band.
+- **confidence**: low / medium / high, based on data quality and sample size.
+- **narrative**: Full source-by-source breakdown, divergences, dominant narrative themes (incl. Chinese keywords), catalysts and risks, and a markdown summary table of key sentiment signals.
 
 {get_language_instruction()}"""
 

@@ -125,13 +125,14 @@ DEFAULT_CONFIG = _apply_env_overrides({
     # The configured value is the exact vendor chain — requests are NOT silently
     # routed to vendors you didn't choose. For ordered fallback, list several,
     # e.g. "yfinance,alpha_vantage". "default" uses all available vendors.
+    # NOTE: core_stock_apis and news_data use fallback to reduce Yahoo 401/Invalid Crumb errors.
     "data_vendors": {
-        "core_stock_apis": "yfinance",       # Options: alpha_vantage, yfinance
-        "technical_indicators": "yfinance",  # Options: alpha_vantage, yfinance
-        "fundamental_data": "yfinance",      # Options: alpha_vantage, yfinance
-        "news_data": "yfinance",             # Options: alpha_vantage, yfinance
-        "macro_data": "fred",                # Options: fred (needs FRED_API_KEY)
-        "prediction_markets": "polymarket",  # Options: polymarket (keyless)
+        "core_stock_apis": "akshare,yfinance,alpha_vantage",  # akshare serves HK/CN (no Yahoo 401); defers US/global to yfinance
+        "technical_indicators": "yfinance,alpha_vantage",  # Fallback chain: yfinance first, then alpha_vantage
+        "fundamental_data": "yfinance,alpha_vantage",      # Fallback chain: yfinance first, then alpha_vantage
+        "news_data": "yfinance,alpha_vantage",           # Fallback chain: yfinance first, then alpha_vantage
+        "macro_data": "fred",                            # Options: fred (needs FRED_API_KEY)
+        "prediction_markets": "polymarket",                # Options: polymarket (keyless)
     },
     # Tool-level configuration (takes precedence over category-level)
     "tool_vendors": {

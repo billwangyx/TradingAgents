@@ -44,6 +44,16 @@ dev = [
 bedrock = [
     "langchain-aws>=1.5.0",
 ]
+# Chinese market data support (Eastmoney news via AKShare). Optional so the core
+# install stays lean: pip install "tradingagents[cn]".
+cn = [
+    "akshare>=1.16.0",
+]
+# Browser-backed fetching for JS/WAF-protected public data sources such as
+# Xueqiu. Install browsers separately with: playwright install chromium.
+browser = [
+    "playwright>=1.40",
+]
 
 [project.scripts]
 tradingagents = "cli.main:app"

@@ -136,3 +136,124 @@ def normalize_symbol(raw: str) -> str:
 def is_yahoo_safe(symbol: str) -> bool:
     """True when ``symbol`` only contains characters Yahoo symbols use."""
     return bool(symbol) and _YAHOO_SAFE.fullmatch(symbol) is not None
+
+
+# -----------------------------------------------------------------------------
+# Market detection and Chinese data source symbol conversion
+# -----------------------------------------------------------------------------
+
+# Suffixes that identify the exchange/market for Chinese equities
+_CHINESE_SUFFIXES = {
+    ".HK": "HK",
+    ".SS": "CN",
+    ".SZ": "CN",
+}
+
+# Regex to extract numeric part from ticker (e.g., "0700.HK" -> "0700")
+_TICKER_NUMERIC = re.compile(r"^(\d+)")
+
+
+def detect_market(ticker: str) -> str | None:
+    """Detect market type from ticker suffix.
+
+    Returns:
+        - "HK" for Hong Kong listed stocks (.HK suffix)
+        - "CN" for mainland China A-shares (.SS/.SZ suffix)
+        - None for other markets (US, etc.)
+
+    Examples:
+        >>> detect_market("0700.HK")
+        "HK"
+        >>> detect_market("000001.SZ")
+        "CN"
+        >>> detect_market("AAPL")
+        None
+    """
+    if not isinstance(ticker, str):
+        return None
+    upper = ticker.strip().upper()
+    for suffix, market in _CHINESE_SUFFIXES.items():
+        if upper.endswith(suffix):
+            return market
+    return None
+
+
+def to_eastmoney_code(ticker: str) -> str | None:
+    """Convert broker ticker to Eastmoney (东方财富) symbol format.
+
+    Eastmoney uses:
+        - HK stocks: 5-digit numeric (e.g., "00700" for 0700.HK)
+        - A-shares: 6-digit numeric without suffix (e.g., "000001")
+
+    Returns None if ticker is not a recognized Chinese market symbol.
+
+    Examples:
+        >>> to_eastmoney_code("0700.HK")
+        "00700"
+        >>> to_eastmoney_code("000001.SZ")
+        "000001"
+        >>> to_eastmoney_code("AAPL")
+        None
+    """
+    if not isinstance(ticker, str):
+        return None
+    market = detect_market(ticker)
+    if market is None:
+        return None
+
+    upper = ticker.strip().upper()
+    # Extract numeric part
+    match = _TICKER_NUMERIC.search(upper)
+    if not match:
+        return None
+    numeric = match.group(1)
+
+    if market == "HK":
+        # HK: 5 digits with leading zeros (0700 -> 00700)
+        return numeric.zfill(5)
+    else:
+        # CN: 6 digits, already the standard format
+        return numeric.zfill(6)
+
+
+def to_xueqiu_symbol(ticker: str) -> str | None:
+    """Convert broker ticker to Xueqiu (雪球) symbol format.
+
+    Xueqiu uses exchange-prefixed format:
+        - HK stocks: "HK" + numeric (e.g., "HK00700")
+        - Shanghai A-shares: "SH" + numeric (e.g., "SH600519")
+        - Shenzhen A-shares: "SZ" + numeric (e.g., "SZ000001")
+
+    Returns None if ticker is not a recognized Chinese market symbol.
+
+    Examples:
+        >>> to_xueqiu_symbol("0700.HK")
+        "HK00700"
+        >>> to_xueqiu_symbol("600519.SS")
+        "SH600519"
+        >>> to_xueqiu_symbol("000001.SZ")
+        "SZ000001"
+        >>> to_xueqiu_symbol("AAPL")
+        None
+    """
+    if not isinstance(ticker, str):
+        return None
+
+    upper = ticker.strip().upper()
+    market = detect_market(ticker)
+    if market is None:
+        return None
+
+    # Extract numeric part
+    match = _TICKER_NUMERIC.search(upper)
+    if not match:
+        return None
+    numeric = match.group(1)
+
+    if market == "HK":
+        return f"HK{numeric.zfill(5)}"
+    elif upper.endswith(".SS"):
+        return f"SH{numeric.zfill(6)}"
+    elif upper.endswith(".SZ"):
+        return f"SZ{numeric.zfill(6)}"
+    return None
