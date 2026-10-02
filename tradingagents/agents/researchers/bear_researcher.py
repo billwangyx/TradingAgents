@@ -2,7 +2,10 @@ from tradingagents.agents.utils.agent_utils import (
     get_instrument_context_from_state,
     get_language_instruction,
 )
-from tradingagents.agents.utils.deep_note import downstream_instruction
+from tradingagents.agents.utils.deep_note import (
+    downstream_instruction,
+    news_empty_debate_note,
+)
 
 
 def create_bear_researcher(llm):
@@ -45,7 +48,7 @@ Latest world affairs news: {news_report}
 Conversation history of the debate: {history}
 Last bull argument: {current_response}
 Use this information to deliver a compelling bear argument, refute the bull's claims, and engage in a dynamic debate that demonstrates the risks and weaknesses of investing in the {target_label}.
-""" + downstream_instruction() + get_language_instruction()
+""" + downstream_instruction() + news_empty_debate_note(state) + get_language_instruction()
 
         response = llm.invoke(prompt)
 

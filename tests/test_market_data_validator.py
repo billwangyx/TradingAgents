@@ -75,7 +75,7 @@ class TestVerifiedSnapshot:
         close_rows = [ln for ln in snap.splitlines() if ln.startswith("| 2026-")]
         assert 0 < len(close_rows) <= 30
 
-    def test_calendar_ytd_is_simple_return_off_prior_year_close(self, monkeypatch):
+    def test_calendar_ytd_is_first_close_of_year_to_last(self, monkeypatch):
         dates = pd.to_datetime(["2025-12-30", "2025-12-31", "2026-01-02", "2026-01-05"])
         frame = pd.DataFrame({
             "Date": dates,
@@ -87,14 +87,24 @@ class TestVerifiedSnapshot:
         })
         monkeypatch.setattr(validator, "load_ohlcv", lambda s, d: frame)
         snap = validator.build_verified_market_snapshot("COF", "2026-01-05")
-        # 132 / 110 - 1 = +20%
-        assert "+20.00%" in snap
-        assert "prior-year close 110.00 on 2025-12-31" in snap
+        # First 2026 close is 121 on 2026-01-02; last is 132. 132/121 - 1 = +9.09%.
+        # The autouse Yahoo stub has no ytdReturn, so the snapshot uses OHLC.
+        assert "+9.09%" in snap
+        assert "first close of year 121.00 on 2026-01-02" in snap
 
-    def test_calendar_ytd_gaps_when_prior_year_close_is_missing(self, monkeypatch):
-        monkeypatch.setattr(validator, "load_ohlcv", lambda s, d: _sample_ohlcv())
+    def test_calendar_ytd_gaps_only_when_year_history_is_missing(self, monkeypatch):
+        dates = pd.to_datetime(["2025-12-30", "2025-12-31"])
+        frame = pd.DataFrame({
+            "Date": dates,
+            "Open": [99.0, 109.0],
+            "High": [101.0, 111.0],
+            "Low": [98.0, 108.0],
+            "Close": [100.0, 110.0],
+            "Volume": [1, 1],
+        })
+        monkeypatch.setattr(validator, "load_ohlcv", lambda s, d: frame)
         snap = validator.build_verified_market_snapshot("COF", "2026-05-13")
-        assert "— (Gap: no close before 2026-01-01" in snap
+        assert "— (Gap: no close in calendar year 2026" in snap
 
     def test_missing_dividend_yield_is_an_em_dash_with_reason(self):
         assert validator.format_dividend_yield(None).startswith("— (")

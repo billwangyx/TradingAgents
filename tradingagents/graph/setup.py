@@ -21,6 +21,7 @@ from tradingagents.agents import (
     create_trader,
 )
 from tradingagents.agents.utils.agent_states import AgentState
+from tradingagents.graph.research_mode import risk_truncated_node
 
 from .analyst_execution import build_analyst_execution_plan
 from .conditional_logic import ConditionalLogic
@@ -93,6 +94,7 @@ class GraphSetup:
         workflow.add_node("Neutral Analyst", neutral_analyst)
         workflow.add_node("Conservative Analyst", conservative_analyst)
         workflow.add_node("Portfolio Manager", portfolio_manager_node)
+        workflow.add_node("Risk Truncated", risk_truncated_node)
 
         # Define edges
         # Start with the first analyst
@@ -135,8 +137,25 @@ class GraphSetup:
                 "Research Manager": "Research Manager",
             },
         )
-        workflow.add_edge("Research Manager", "Trader")
-        workflow.add_edge("Trader", "Aggressive Analyst")
+        # research_mode ends here. The trader and the risk desk stay on the
+        # graph for research_mode=False; they are not the deep-note default.
+        workflow.add_conditional_edges(
+            "Research Manager",
+            self.conditional_logic.route_after_research_manager,
+            {
+                END: END,
+                "Trader": "Trader",
+            },
+        )
+        workflow.add_conditional_edges(
+            "Trader",
+            self.conditional_logic.route_after_trader,
+            {
+                "Risk Truncated": "Risk Truncated",
+                "Aggressive Analyst": "Aggressive Analyst",
+            },
+        )
+        workflow.add_edge("Risk Truncated", END)
         workflow.add_conditional_edges(
             "Aggressive Analyst",
             self.conditional_logic.should_continue_risk_analysis,

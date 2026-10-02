@@ -1109,6 +1109,7 @@ def run_analysis(checkpoint: bool | None = None):
             selections["analysis_date"],
             asset_type=selections["asset_type"],
             instrument_context=instrument_context,
+            research_mode=graph.research_mode,
         )
         # Pass callbacks to graph config for tool execution tracking
         # (LLM tracking is handled separately via LLM constructor)

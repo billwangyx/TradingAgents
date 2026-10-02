@@ -33,6 +33,10 @@ from tradingagents.dataflows.config import set_config
 from tradingagents.dataflows.utils import safe_ticker_component
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.llm_clients import create_llm_client
+from tradingagents.llm_clients.model_catalog import (
+    resolve_deep_think_model,
+    resolve_quick_think_model,
+)
 from tradingagents.reporting import write_report_tree
 
 from .checkpointer import checkpoint_step, clear_checkpoint, get_checkpointer, thread_id
@@ -64,8 +68,22 @@ class TradingAgentsGraph:
             callbacks: Optional list of callback handlers (e.g., for tracking LLM/tool stats)
         """
         self.debug = debug
-        self.config = config or DEFAULT_CONFIG
+        # Shallow-copy the process-wide default so model resolution cannot
+        # rewrite DEFAULT_CONFIG for later callers.
+        if config is None or config is DEFAULT_CONFIG:
+            self.config = {**DEFAULT_CONFIG}
+        else:
+            self.config = config
         self.callbacks = callbacks or []
+        provider = self.config.get("llm_provider", "")
+        self.config["quick_think_llm"] = resolve_quick_think_model(
+            provider, self.config.get("quick_think_llm")
+        )
+        self.config["deep_think_llm"] = resolve_deep_think_model(
+            provider, self.config.get("deep_think_llm")
+        )
+        # Full trading graph unless a deep-note entrypoint turns this on.
+        self.research_mode = bool(self.config.get("research_mode", False))
 
         # Update the interface's config
         set_config(self.config)
@@ -388,6 +406,7 @@ class TradingAgentsGraph:
             asset_type=asset_type,
             past_context=past_context,
             instrument_context=instrument_context,
+            research_mode=self.research_mode,
         )
         args = self.propagator.get_graph_args()
 
@@ -424,11 +443,20 @@ class TradingAgentsGraph:
         # Log state to disk.
         self._log_state(trade_date, final_state)
 
+        # Research mode stops after the research manager, so there is no
+        # portfolio-manager decision. Log the investment plan instead. This
+        # still does not place an order.
+        decision_text = (
+            final_state.get("final_trade_decision")
+            or final_state.get("investment_plan")
+            or ""
+        )
+
         # Store decision for deferred reflection on the next same-ticker run.
         self.memory_log.store_decision(
             ticker=company_name,
             trade_date=trade_date,
-            final_trade_decision=final_state["final_trade_decision"],
+            final_trade_decision=decision_text,
         )
 
         # Clear checkpoint on successful completion to avoid stale state.
@@ -437,7 +465,7 @@ class TradingAgentsGraph:
                 self.config["data_cache_dir"], company_name, str(trade_date)
             )
 
-        return final_state, self.process_signal(final_state["final_trade_decision"])
+        return final_state, self.process_signal(decision_text)
 
     def _log_state(self, trade_date, final_state):
         """Log the final state to a JSON file."""
@@ -459,7 +487,7 @@ class TradingAgentsGraph:
                     "judge_decision"
                 ],
             },
-            "trader_investment_decision": final_state["trader_investment_plan"],
+            "trader_investment_decision": final_state.get("trader_investment_plan", ""),
             "risk_debate_state": {
                 "aggressive_history": final_state["risk_debate_state"]["aggressive_history"],
                 "conservative_history": final_state["risk_debate_state"]["conservative_history"],
@@ -467,8 +495,12 @@ class TradingAgentsGraph:
                 "history": final_state["risk_debate_state"]["history"],
                 "judge_decision": final_state["risk_debate_state"]["judge_decision"],
             },
-            "investment_plan": final_state["investment_plan"],
-            "final_trade_decision": final_state["final_trade_decision"],
+            "investment_plan": final_state.get("investment_plan", ""),
+            "final_trade_decision": final_state.get("final_trade_decision")
+            or final_state.get("investment_plan")
+            or "",
+            "news_empty": bool(final_state.get("news_empty", False)),
+            "research_mode": bool(final_state.get("research_mode", False)),
         }
 
         # Save to file. Reject ticker values that would escape the

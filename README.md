@@ -101,7 +101,16 @@ Our framework decomposes complex trading tasks into specialized roles.
 
 ### Deep single-stock notes
 
-A deep equity pass follows [`docs/deep-note-harness.md`](docs/deep-note-harness.md): market data (including calendar YTD and dividend yield), the FRED key series, filings, a required controlling-shareholder pack, a required management-commentary pack, earnings transcripts, peers, the TA graph, then the note with an explicit Gaps list and a short residue of blocked sources. Ownership, fees, and management quotes are attributed. An Akamai-blocked IR page is recorded with its URL and read from a SEC EX-99, exchange, or GlobeNewswire mirror — the CDN is not retried. A missing FRED series, empty news, a blank YTD, or a transcript that exists only as a secondary Motley Fool copy is a Gap. The note is research and does not place orders.
+A deep equity pass follows [`docs/deep-note-harness.md`](docs/deep-note-harness.md): market data (including calendar YTD and dividend yield), the FRED key series, filings, a required controlling-shareholder pack, a required management-commentary pack, earnings transcripts, peers, the TA graph, then the note. Gaps sit near the top; shareholder/control and management/strategy follow. Ownership, fees, and management quotes are attributed. An Akamai-blocked IR page is recorded with its URL and read from a SEC EX-99, exchange, or GlobeNewswire mirror — the CDN is not retried. A missing FRED series, empty news, a blank YTD, or a transcript that exists only as a secondary Motley Fool copy is a Gap. The note is research and does not place orders.
+
+Headless, one ticker, research-mode by default (stops after the research manager; the full trading graph is `--full-trading-graph`):
+
+```bash
+python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD
+python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD --out ./notes/HHH
+```
+
+Analysts default to `deepseek-flash` (`deepseek-v4-flash`) when the provider is DeepSeek. Ticker news tries Yahoo, then Alpha Vantage, then Eastmoney/akshare, and sets `NEWS_EMPTY` only after that chain. YTD uses Yahoo `ytdReturn`, or the first close of the year through the last close when that field is empty or the quote returns 401.
 
 ## Installation and CLI
 
@@ -177,7 +186,7 @@ Launch the interactive CLI:
 tradingagents          # installed command
 python -m cli.main     # alternative: run directly from source
 ```
-You will see a screen where you can select your desired tickers, analysis date, LLM provider, research depth, and more.
+You will see a screen where you can select your desired tickers, analysis date, LLM provider, research depth, and more. That interactive path keeps the full trading graph. A deep equity note uses the headless command above, which defaults to research-mode and does not place orders.
 
 ### Markets and tickers
 

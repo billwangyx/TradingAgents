@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>{TICKER} equity note — {as-of date}</title>
+<style>
+  body { margin: 0; background: #f4f7fa; color: #1a1a1a;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif; }
+  .bar { background: #073765; color: #fff; display: flex; justify-content: space-between;
+    padding: 8px 20px; font-size: 12px; letter-spacing: 0.04em; }
+  .rail { border-left: 4px solid #073765; }
+  .paper { max-width: 1280px; margin: 0 auto; background: #fff; padding: 28px 36px 48px; }
+  .kicker { color: #1a7a8c; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+  h1 { color: #073765; font-size: 26px; letter-spacing: -0.02em; margin: 6px 0 8px; }
+  .meta { color: #5c6b73; font-size: 13px; }
+  .snapshot { background: #cadef0; border-left: 4px solid #1a7a8c; padding: 12px 16px; }
+  h2 { color: #073765; font-size: 18px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; font-family: Roboto, "Segoe UI", Arial, sans-serif;
+    font-variant-numeric: tabular-nums; }
+  th { color: #1a7a8c; text-align: left; font-size: 12px; letter-spacing: 0.04em; }
+  td.num, th.num { text-align: right; }
+  .up { color: #b91c1c; } .down { color: #15803d; }
+  footer { color: #5c6b73; font-size: 12px; margin-top: 36px; }
+</style>
+</head>
+<body>
+<div class="bar"><span>EQUITY RESEARCH · INDEPENDENT NOTE</span><span>{date} CST · {region}</span></div>
+<div class="rail"><div class="paper">
+  <div class="kicker">EQUITY NOTE</div>
+  <h1>{TICKER} — {what the note is}</h1>
+  <p class="meta">As of {Asia/Shanghai time, labeled CST} · source {retrieved sources} · coverage {quoted}/{total}</p>
+  <div class="snapshot">{one or two retrieved facts. No filler. No invented print.}</div>
+
+  <h2>Exhibit 1 · Gaps</h2>
+  <ul>
+    <li>{item} — {source that failed} — {blocked URL if any} — fallback {tried or "none"} — still open</li>
+    <li>NEWS_EMPTY after yfinance, alpha_vantage, akshare — do not invent a headline</li>
+    <li>YTD — Gap only when calendar-year OHLC history is missing</li>
+  </ul>
+
+  <h2>Exhibit 2 · Controlling / major shareholder</h2>
+  <p>{holder, role}: {ownership % or "not in source"}; voting cap {or Gap}; fees {or Gap}. Controller material: {letter or presentation, date, url}.</p>
+
+  <h2>Exhibit 3 · Management / strategy</h2>
+  <p>{Speaker, role}, {date}, {document, url}: "{quote}" — primary | secondary.</p>
+
+  <h2>Exhibit 4 · Market</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>代码</th><th>名称</th>
+        <th class="num">股价</th><th class="num">涨跌幅</th><th class="num">本周涨跌</th>
+        <th class="num">YTD</th><th class="num">52周高</th><th class="num">52周低</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>{ticker}</td><td>{name}</td>
+        <td class="num">{price with currency}</td>
+        <td class="num">{daily}</td>
+        <td class="num">{week}</td>
+        <td class="num">{YTD or —}</td>
+        <td class="num">{52w high}</td>
+        <td class="num">{52w low}</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>YTD is calendar-year simple price return (first available close of the year vs last), not total return. Missing = —.</p>
+
+  <footer>
+    <p>Data: {sources actually retrieved}. Gaps are listed in Exhibit 1 and are not filled.</p>
+    <p>Visual format inspired by publicly described sell-side equity-research layout conventions. This note is independent and is not a Morgan Stanley (or any other bank) research product; it does not use their marks or disclaimer language.</p>
+  </footer>
+</div></div>
+</body>
+</html>

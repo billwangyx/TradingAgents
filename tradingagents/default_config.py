@@ -130,7 +130,10 @@ DEFAULT_CONFIG = _apply_env_overrides({
         "core_stock_apis": "akshare,yfinance,alpha_vantage",  # akshare serves HK/CN (no Yahoo 401); defers US/global to yfinance
         "technical_indicators": "yfinance,alpha_vantage",  # Fallback chain: yfinance first, then alpha_vantage
         "fundamental_data": "yfinance,alpha_vantage",      # Fallback chain: yfinance first, then alpha_vantage
-        "news_data": "yfinance,alpha_vantage",           # Fallback chain: yfinance first, then alpha_vantage
+        # Ticker news order: Yahoo, then Alpha Vantage, then Eastmoney via
+        # akshare (CN/HK). An empty or failed vendor is not an article; the
+        # router tries the next name and emits NEWS_EMPTY only after the chain.
+        "news_data": "yfinance,alpha_vantage,akshare",
         "macro_data": "fred",                            # Options: fred (needs FRED_API_KEY)
         "prediction_markets": "polymarket",                # Options: polymarket (keyless)
     },

@@ -1,5 +1,7 @@
 import logging
 
+from .akshare_cn import get_eastmoney_news as get_akshare_news
+from .akshare_market import get_stock_data as get_akshare_stock_data
 from .alpha_vantage import (
     get_balance_sheet as get_alpha_vantage_balance_sheet,
     get_cashflow as get_alpha_vantage_cashflow,
@@ -11,7 +13,6 @@ from .alpha_vantage import (
     get_news as get_alpha_vantage_news,
     get_stock as get_alpha_vantage_stock,
 )
-from .akshare_market import get_stock_data as get_akshare_stock_data
 from .config import get_config
 from .errors import (
     NoMarketDataError,
@@ -19,6 +20,7 @@ from .errors import (
     VendorRateLimitError,
 )
 from .fred import get_macro_data as get_fred_macro_data
+from .news_empty import format_news_empty, news_payload_is_empty
 from .polymarket import get_prediction_markets as get_polymarket_prediction_markets
 from .y_finance import (
     get_balance_sheet as get_yfinance_balance_sheet,
@@ -125,6 +127,7 @@ VENDOR_METHODS = {
     },
     # news_data
     "get_news": {
+        "akshare": get_akshare_news,
         "alpha_vantage": get_alpha_vantage_news,
         "yfinance": get_news_yfinance,
     },
@@ -197,12 +200,13 @@ def route_to_vendor(method: str, *args, **kwargs):
 
     last_no_data: NoMarketDataError | None = None
     first_error: Exception | None = None
+    empty_news_vendors: list[str] = []
     for vendor in vendor_chain:
         vendor_impl = VENDOR_METHODS[method][vendor]
         impl_func = vendor_impl[0] if isinstance(vendor_impl, list) else vendor_impl
 
         try:
-            return impl_func(*args, **kwargs)
+            result = impl_func(*args, **kwargs)
         except VendorRateLimitError:
             logger.warning("Vendor %r rate-limited for %s; trying next vendor.", vendor, method)
             continue
@@ -222,6 +226,24 @@ def route_to_vendor(method: str, *args, **kwargs):
             if first_error is None:
                 first_error = e
             continue
+
+        # Ticker news: "No news found", a vendor error string, or an Eastmoney
+        # "not applicable" placeholder is a miss, not an article. Try the next
+        # configured vendor. Do not invent a headline to fill the gap.
+        if method == "get_news" and news_payload_is_empty(result):
+            lines = str(result).strip().splitlines() if result is not None else []
+            preview = lines[0][:180] if lines else ""
+            logger.warning(
+                "Vendor %r returned no usable ticker news for %s (%s); trying next vendor.",
+                vendor, method, preview,
+            )
+            empty_news_vendors.append(vendor)
+            continue
+        return result
+
+    if method == "get_news" and empty_news_vendors:
+        ticker = str(args[0]) if args else ""
+        return format_news_empty(ticker, vendor_chain)
 
     # If any vendor reported "no data", the symbol is genuinely unavailable.
     # Return one explicit, instructive sentinel rather than a vendor-specific

@@ -40,7 +40,7 @@ Attempt both layers below. Attribute every ownership percent, voting cap, fee, a
 - {MANAGEMENT_HEADING}: CEO, President, and CFO quotes from earnings calls and IR press releases, with speaker, date, and document. {TRANSCRIPT_RULE} Distill this layer so it can be saved as a local `management-*.md` (for example `management-strategy.md` or `management-and-pershing.md`) with the same attribution.
 - {IR_MIRROR_RULE}
 - Source order when a primary text is actually in hand: {SOURCE_ORDER}.
-- {GAPS_HEADING}: end with this section. Record IR CDN/Akamai denials with the blocked URL, empty GCS or IR decks, missing FRED series, empty news, blank YTD, a dividend yield that came back as an em dash, and no sell-side NAV. Fallbacks, then still a Gap if the fallback is empty: Akamai-blocked IR → SEC EX-99, the exchange filing, or GlobeNewswire, and do not hammer the CDN; empty GCS decks → SEC exhibits; missing FRED → Gap; empty Yahoo or vendor news → Gap. Do not invent a headline or a print to cover a block.
+- {GAPS_HEADING}: put this section near the top of the note, immediately after the snapshot and before the long exhibits. {SHAREHOLDER_HEADING} and {MANAGEMENT_HEADING} come next, ahead of peers and technicals. Record IR CDN/Akamai denials with the blocked URL, empty GCS or IR decks, missing FRED series, empty news, blank YTD, a dividend yield that came back as an em dash, and no sell-side NAV. Fallbacks, then still a Gap if the fallback is empty: Akamai-blocked IR → SEC EX-99, the exchange filing, or GlobeNewswire, and do not hammer the CDN; empty GCS decks → SEC exhibits; missing FRED → Gap; ticker news tries Yahoo, then Alpha Vantage, then Eastmoney/akshare for CN/HK names, and a still-empty result is NEWS_EMPTY → Gap. Do not invent a headline or a print to cover a block.
 """
 
 
@@ -56,7 +56,7 @@ Deep-note layers (required on a stock news pass; research only, no orders):
 - Call get_insider_transactions once for the ticker. Report only rows the tool returned.
 - {FRED_KEY_SERIES_RULE}
 - {IR_MIRROR_RULE}
-- {GAPS_HEADING}: empty get_news or get_global_news → Gap; do not invent headlines. FRED missing, unconfigured, or empty → Gap; do not invent macro prints. Akamai-blocked IR → record Gap plus the blocked URL, then use SEC EX-99, the exchange filing, or GlobeNewswire if that text was retrieved. Do not retry the CDN. Empty GCS/IR decks → SEC exhibits if retrieved, otherwise Gap plus the deck URL. Source order: {SOURCE_ORDER}.
+- {GAPS_HEADING}: put Gaps near the top of the note, after the snapshot. {SHAREHOLDER_HEADING} and {MANAGEMENT_HEADING} are the next priorities. Empty get_news (including a NEWS_EMPTY line after Yahoo, Alpha Vantage, and Eastmoney/akshare) or empty get_global_news → Gap; do not invent headlines. FRED missing, unconfigured, or empty → Gap; do not invent macro prints. Akamai-blocked IR → record Gap plus the blocked URL, then use SEC EX-99, the exchange filing, or GlobeNewswire if that text was retrieved. Do not retry the CDN. Empty GCS/IR decks → SEC exhibits if retrieved, otherwise Gap plus the deck URL. Source order: {SOURCE_ORDER}.
 """
 
 
@@ -74,9 +74,23 @@ def market_gap_instruction() -> str:
     """Market analyst: blank prints stay blank."""
     return (
         f" The verified snapshot includes Calendar YTD simple return and Dividend yield. "
-        f"If YTD, dividend yield, or any other exact print is an em dash or otherwise "
-        f"absent from tool output, copy that line under {GAPS_HEADING} with its reason. "
-        f"Do not invent the figure, a headline, or a reconciled number."
+        f"Calendar YTD is Yahoo info ytdReturn when that field is present. If ytdReturn "
+        f"is empty or the quote lookup returns 401, the snapshot uses the first available "
+        f"close of the calendar year versus the latest close. Gap only when that price "
+        f"history is missing. If YTD, dividend yield, or any other exact print is an em "
+        f"dash or otherwise absent from tool output, copy that line under {GAPS_HEADING} "
+        f"with its reason. Do not invent the figure, a headline, or a reconciled number."
+    )
+
+
+def news_empty_debate_note(state: dict | None) -> str:
+    """Short bull/bear/manager addendum when ticker news vendors returned nothing."""
+    if not state or not state.get("news_empty"):
+        return ""
+    return (
+        " NEWS_EMPTY is set: ticker news vendors returned no headlines. "
+        "Keep this argument to one short paragraph. Do not invent headlines "
+        "and do not extend the debate to fill the gap."
     )
 
 
