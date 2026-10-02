@@ -99,6 +99,10 @@ Our framework decomposes complex trading tasks into specialized roles.
   <img src="assets/risk.png" width="70%" style="display: inline-block; margin: 0 2%;">
 </p>
 
+### Deep single-stock notes
+
+A deep equity pass follows [`docs/deep-note-harness.md`](docs/deep-note-harness.md): market data (including calendar YTD and dividend yield), the FRED key series, filings, a required controlling-shareholder pack, a required management-commentary pack, earnings transcripts, peers, the TA graph, then the note with an explicit Gaps list and a short residue of blocked sources. Ownership, fees, and management quotes are attributed. An Akamai-blocked IR page is recorded with its URL and read from a SEC EX-99, exchange, or GlobeNewswire mirror — the CDN is not retried. A missing FRED series, empty news, a blank YTD, or a transcript that exists only as a secondary Motley Fool copy is a Gap. The note is research and does not place orders.
+
 ## Installation and CLI
 
 ### Installation

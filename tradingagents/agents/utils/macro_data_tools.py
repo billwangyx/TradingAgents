@@ -34,3 +34,18 @@ def get_macro_indicators(
         str: A formatted markdown report of the macro series
     """
     return route_to_vendor("get_macro_indicators", indicator, curr_date, look_back_days)
+
+
+@tool
+def get_fred_key_series(
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format; the end of each window"],
+) -> str:
+    """Attempt the deep-note FRED key series in one call.
+
+    Tries fed funds, the 2-year and 10-year Treasury yields, the 10y-2y curve,
+    CPI, core PCE, and unemployment. Each failure is an explicit Gap line.
+    The tool does not return an empty string and does not invent a print.
+    """
+    from tradingagents.dataflows.fred import fetch_deep_note_key_series
+
+    return fetch_deep_note_key_series(curr_date)
