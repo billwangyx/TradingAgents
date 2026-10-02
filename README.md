@@ -99,6 +99,10 @@ Our framework decomposes complex trading tasks into specialized roles.
   <img src="assets/risk.png" width="70%" style="display: inline-block; margin: 0 2%;">
 </p>
 
+### Deep single-stock notes
+
+A deep equity pass follows [`docs/deep-note-harness.md`](docs/deep-note-harness.md): market data, filings, a required controlling-shareholder pack, a required management-commentary pack, peers, the TA graph, then the note with an explicit Gaps list and a short residue of blocked sources. Ownership, fees, and management quotes are attributed. An Akamai-blocked IR page, an empty investor deck, a missing FRED series, empty news, or a blank YTD is a Gap — it is not filled in. The note is research and does not place orders.
+
 ## Installation and CLI
 
 ### Installation

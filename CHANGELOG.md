@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Breaking changes within the 0.x line are called out explicitly.
 
+## [Unreleased]
+
+### Added
+
+- **Deep single-stock note harness.** [`docs/deep-note-harness.md`](docs/deep-note-harness.md)
+  records the checklist used on the 2026-10-02 equity notes: market data, filings,
+  a required controlling-shareholder pack (ownership, voting caps, fees, controller
+  letters, 13D/13F only when retrieved), a required management-voice pack
+  (CEO/President/CFO quotes with attribution, local `management-*.md`), peers,
+  TA, then the note plus Gaps and residue. Source order is EDGAR/SEDAR+ →
+  company or GlobeNewswire → controller materials → secondary transcripts →
+  Yahoo. Known blocks stay Gaps: IR Akamai deny falls back to SEC EX-99 or
+  GlobeNewswire, empty GCS decks fall back to SEC exhibits, missing FRED and
+  empty news or a blank YTD are Gaps and are not invented. Fundamentals, news,
+  and market analysts, plus the bull, bear, and research manager, append those
+  rules from `tradingagents/agents/utils/deep_note.py`.
+
 ## [0.2.5] — 2026-05-11
 
 ### Added
