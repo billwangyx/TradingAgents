@@ -47,38 +47,118 @@ def _verified_rows(symbol: str, curr_date: str) -> pd.DataFrame:
     return df
 
 
-def format_calendar_ytd(df: pd.DataFrame, curr_date: str) -> str:
-    """Calendar YTD simple return from the verified close series.
+def _ytd_from_ohlc(df: pd.DataFrame, curr_date: str):
+    """First close of the calendar year to the latest close, or None.
 
-    Simple return is the latest close on or before ``curr_date`` divided by the
-    last close strictly before January 1 of that year, minus one. A missing
-    base or end print is an em dash plus the reason, never a guessed percent.
+    Simple price return, not total return. ``None`` means the verified window
+    has no usable close inside that year, so the caller writes a Gap instead
+    of a percent.
     """
     cutoff = pd.Timestamp(curr_date).normalize()
     year_start = pd.Timestamp(year=cutoff.year, month=1, day=1)
     frame = df.copy()
     frame["_day"] = pd.to_datetime(frame["Date"], errors="coerce").dt.normalize()
     frame = frame.dropna(subset=["_day"])
-    prior = frame[frame["_day"] < year_start]
-    current = frame[frame["_day"] <= cutoff]
-    if prior.empty:
-        return (
-            f"— (Gap: no close before {year_start.date()} in the verified OHLCV "
-            f"window; calendar YTD needs the last prior-year close)"
-        )
-    if current.empty or "Close" not in frame.columns:
-        return "— (Gap: no close on or before the analysis date)"
-    base_row = prior.iloc[-1]
-    end_row = current.iloc[-1]
+    if "Close" not in frame.columns:
+        return None
+    year_rows = frame[(frame["_day"] >= year_start) & (frame["_day"] <= cutoff)]
+    if year_rows.empty:
+        return None
+    base_row = year_rows.iloc[0]
+    end_row = year_rows.iloc[-1]
     base = base_row.get("Close")
     end = end_row.get("Close")
     if pd.isna(base) or pd.isna(end) or float(base) == 0:
-        return "— (Gap: prior-year or latest close is missing or zero)"
+        return None
     simple = (float(end) / float(base)) - 1
+    return simple, base, base_row["Date"], end, end_row["Date"]
+
+
+def format_calendar_ytd(df: pd.DataFrame, curr_date: str) -> str:
+    """Calendar YTD simple return from verified OHLC.
+
+    First available close of the calendar year versus the latest close on or
+    before ``curr_date``. A missing year of history is an em dash plus the
+    reason, never a guessed percent.
+    """
+    computed = _ytd_from_ohlc(df, curr_date)
+    if computed is None:
+        year = pd.Timestamp(curr_date).year
+        return (
+            f"— (Gap: no close in calendar year {year} in the verified OHLCV "
+            f"window; YTD needs price history and is not invented)"
+        )
+    simple, base, base_day, end, end_day = computed
     return (
-        f"{simple:+.2%} (simple return: close {_fmt(end)} on {_fmt(end_row['Date'])} / "
-        f"prior-year close {_fmt(base)} on {_fmt(base_row['Date'])} - 1)"
+        f"{simple:+.2%} (simple return: close {_fmt(end)} on {_fmt(end_day)} / "
+        f"first close of year {_fmt(base)} on {_fmt(base_day)} - 1)"
     )
+
+
+def _ytd_number(value) -> float | None:
+    """Yahoo ``ytdReturn`` as a float ratio, or None when the field is blank."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        if not value.strip():
+            return None
+        try:
+            value = float(value)
+        except ValueError:
+            return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(number):
+        return None
+    return number
+
+
+def _yahoo_ytd_auth_failure(exc: BaseException) -> bool:
+    blob = f"{type(exc).__name__} {exc}".lower()
+    return any(token in blob for token in ("401", "unauthorized", "invalid crumb", "crumb"))
+
+
+def lookup_yahoo_ytd_return(symbol: str) -> tuple[str, float | None]:
+    """Read Yahoo ``ytdReturn``.
+
+    Returns ``("ok", ratio)``, ``("empty", None)`` when the field is blank or
+    the quote lookup is a 401/crumb failure, or ``("error", None)`` for any
+    other lookup failure. Callers compute from OHLC in the last two cases.
+    """
+    try:
+        canonical = normalize_symbol(symbol)
+        info = yf_retry(lambda: yf.Ticker(canonical).info)
+    except Exception as exc:
+        if _yahoo_ytd_auth_failure(exc):
+            return "empty", None
+        return "error", None
+    if not isinstance(info, dict):
+        return "empty", None
+    number = _ytd_number(info.get("ytdReturn"))
+    if number is None:
+        return "empty", None
+    return "ok", number
+
+
+def format_verified_ytd(df: pd.DataFrame, curr_date: str, symbol: str) -> str:
+    """KPI line: Yahoo ``ytdReturn`` when present, otherwise OHLC.
+
+    Gap only when Yahoo has no usable print and the year's close history is
+    missing. Does not invent a percent.
+    """
+    status, value = lookup_yahoo_ytd_return(symbol)
+    if status == "ok" and value is not None:
+        return f"{value:+.2%} (Yahoo info ytdReturn, as returned)"
+    local = format_calendar_ytd(df, curr_date)
+    if local.startswith("—"):
+        return local
+    if status == "empty":
+        note = "Yahoo ytdReturn empty or 401; computed from OHLC"
+    else:
+        note = "Yahoo ytdReturn unavailable; computed from OHLC"
+    return f"{local} ({note})"
 
 
 def format_dividend_yield(value) -> str:
@@ -165,7 +245,7 @@ def build_verified_market_snapshot(
         "",
         "### Calendar YTD simple return",
         "",
-        format_calendar_ytd(df, curr_date),
+        format_verified_ytd(df, curr_date, symbol),
         "",
         "### Dividend yield (Yahoo info)",
         "",

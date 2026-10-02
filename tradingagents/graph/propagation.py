@@ -22,6 +22,7 @@ class Propagator:
         asset_type: str = "stock",
         past_context: str = "",
         instrument_context: str = "",
+        research_mode: bool = False,
     ) -> dict[str, Any]:
         """Create the initial state for the agent graph.
 
@@ -66,6 +67,8 @@ class Propagator:
             "fundamentals_report": "",
             "sentiment_report": "",
             "news_report": "",
+            "news_empty": False,
+            "research_mode": bool(research_mode),
         }
 
     def get_graph_args(self, callbacks: list | None = None) -> dict[str, Any]:

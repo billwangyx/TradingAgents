@@ -11,6 +11,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_prediction_markets,
 )
 from tradingagents.agents.utils.deep_note import news_layer_instruction
+from tradingagents.dataflows.news_empty import detect_news_empty
 
 
 def create_news_analyst(llm):
@@ -63,13 +64,18 @@ def create_news_analyst(llm):
         result = chain.invoke(state["messages"])
 
         report = ""
-
-        if len(result.tool_calls) == 0:
-            report = result.content
-
-        return {
+        update = {
             "messages": [result],
             "news_report": report,
         }
+
+        if len(result.tool_calls) == 0:
+            report = result.content
+            update["news_report"] = report
+            # Tool results are already on the state. Flag an empty ticker-news
+            # chain so bull/bear stay short and the risk desk is not convened.
+            update["news_empty"] = detect_news_empty(state["messages"], report)
+
+        return update
 
     return news_analyst_node

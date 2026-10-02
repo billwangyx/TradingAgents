@@ -191,6 +191,41 @@ MODEL_OPTIONS: ProviderModeOptions = {
 }
 
 
+# Analysts and the quick path. ``deepseek-flash`` is the name deep-note uses;
+# the API id in this catalog is DeepSeek V4 Flash.
+DEEPSEEK_FLASH_ALIAS = "deepseek-flash"
+DEEPSEEK_FLASH_MODEL = "deepseek-v4-flash"
+DEEPSEEK_DEEP_MODEL = "deepseek-v4-pro"
+_OPENAI_QUICK_DEFAULT = "gpt-5.4-mini"
+_OPENAI_DEEP_DEFAULT = "gpt-5.5"
+
+
+def resolve_quick_think_model(provider: str | None, model: str | None) -> str:
+    """Default the quick/analyst model to DeepSeek flash when that is the provider.
+
+    An explicit DeepSeek id (for example ``deepseek-v4-pro``) is left alone.
+    The OpenAI quick default and the ``deepseek-flash`` alias both map to
+    ``deepseek-v4-flash``. Other providers are unchanged, except the alias
+    still resolves so a caller can pass it by name.
+    """
+    if model == DEEPSEEK_FLASH_ALIAS:
+        return DEEPSEEK_FLASH_MODEL
+    if (provider or "").lower() != "deepseek":
+        return model or ""
+    if model in (None, "", _OPENAI_QUICK_DEFAULT):
+        return DEEPSEEK_FLASH_MODEL
+    return model
+
+
+def resolve_deep_think_model(provider: str | None, model: str | None) -> str:
+    """Keep an explicit deep model. Replace the OpenAI default on DeepSeek."""
+    if (provider or "").lower() != "deepseek":
+        return model or ""
+    if model in (None, "", _OPENAI_DEEP_DEFAULT):
+        return DEEPSEEK_DEEP_MODEL
+    return model
+
+
 def get_model_options(provider: str, mode: str) -> list[ModelOption]:
     """Return shared model options for a provider and selection mode."""
     return MODEL_OPTIONS[provider.lower()][mode]

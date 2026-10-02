@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from .news_empty import news_payload_is_empty
 from .symbol_utils import to_eastmoney_code
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,22 @@ def fetch_eastmoney_news(ticker: str, limit: int = 20) -> str:
 
     summary = f"Eastmoney (东方财富) Chinese news for {ticker} ({em_code}) · {len(lines)} articles"
     return f"{summary}\n\n" + "\n\n".join(lines)
+
+
+def get_eastmoney_news(ticker: str, start_date: str, end_date: str) -> str:
+    """Router entry for ticker news. CN/HK only; other markets stay a non-article.
+
+    ``start_date`` and ``end_date`` are echoed on a real hit. A placeholder
+    (not installed, not a CN/HK symbol, empty frame, fetch error) is returned
+    unchanged so the router can treat it as empty and try the next vendor.
+    This does not invent a headline.
+    """
+    body = fetch_eastmoney_news(ticker)
+    if news_payload_is_empty(body):
+        return body
+    return (
+        f"## {ticker} Eastmoney news via akshare, {start_date} to {end_date}:\n\n{body}"
+    )
 
 
 def fetch_eastmoney_comment(ticker: str, limit: int = 20) -> str:

@@ -1,6 +1,15 @@
 # Deep single-stock research harness
 
-Checklist for a deep equity note (the pattern that held up on the 2026-10-02 HHH and SHOP passes). The TradingAgents graph still runs analysts, a bull/bear debate, and a simulated rating. The **note** those agents feed is research: attributed primary evidence, an explicit Gaps list, and no invented prints. It does not place orders.
+Checklist for a deep equity note (the pattern that held up on the 2026-10-02 HHH and SHOP passes). The **note** is research: attributed primary evidence, an explicit Gaps list near the top, and no invented prints. It does not place orders.
+
+The deep-note command defaults to `research_mode`: analysts → bull → bear → research manager → stop. The trader, risk desk, and portfolio manager stay in the graph and run only with `--full-trading-graph` (`research_mode=False`). That path still does not place an order.
+
+```bash
+python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD
+python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD --out ./notes/HHH
+```
+
+Defaults: research-mode on, provider `deepseek`, analysts/quick model `deepseek-flash` (API id `deepseek-v4-flash`). The research manager uses `deepseek-v4-pro` unless `--deep-model` is set.
 
 Prompt text for the same rules lives in `tradingagents/agents/utils/deep_note.py` and is appended by the fundamentals analyst, news analyst, market analyst, bull and bear researchers, and research manager.
 
@@ -10,7 +19,7 @@ Do not commit ticker research dumps (HTML notes, full `management-*.md` packs, o
 
 Run the steps in this order. Skip a step only by writing why under Gaps.
 
-1. **Market data.** OHLCV and the verified market snapshot (`get_stock_data`, `get_verified_market_snapshot`, indicators). The snapshot must include **calendar YTD simple return** (latest close on or before the analysis date, divided by the last close before January 1 of that year, minus one) and **dividend yield** from Yahoo `dividendYield` when that field is present. If either print is missing, the snapshot line is `—` plus the reason. Copy that line into Gaps. Do not recompute a blank YTD from memory.
+1. **Market data.** OHLCV and the verified market snapshot (`get_stock_data`, `get_verified_market_snapshot`, indicators). The snapshot must include **calendar YTD simple return** and **dividend yield** from Yahoo `dividendYield` when that field is present. YTD prefers Yahoo `ytdReturn` when that field is a real number. If `ytdReturn` is empty or the quote lookup returns 401, compute simple price return from verified OHLC: first available close of the calendar year → latest close on or before the analysis date. Gap only when that history is missing. Copy an em-dash line into Gaps. Do not invent the percent.
 2. **FRED key series.** Call `get_fred_key_series` once. It attempts fed funds, the 2-year and 10-year Treasury yields, the 10y–2y curve, CPI, core PCE, and unemployment. A missing key, a failed request, an unknown series, or a window with no observations is an explicit `Gap:` line. The helper does not return an empty string. Do not invent the print.
 3. **Filings.** Statements from the bound fundamentals tools. When a primary filing was actually retrieved, prefer SEC EDGAR, and SEDAR+ for a Canadian issuer. This repo's vendors do not download EDGAR or SEDAR+ themselves.
 4. **Shareholder / controller pack.** Required. Ownership %, voting caps, fee arrangements, and strategy letters or presentations from the controller (Pershing's letters for HHH are the shape, not a default fact). 13D/13F only when that filing was retrieved. Attribute the source. Insider Form 4 rows are not a substitute.
@@ -55,15 +64,23 @@ Those tools do not fetch EDGAR, SEDAR+, GlobeNewswire, or IR CDNs. A deep run st
 | IR host denies via Akamai (CDN 403 / edge block) | Record Gap + blocked URL. Use SEC EX-99, the exchange filing, or GlobeNewswire. Do not retry the CDN. | Gap stays open. Do not retype the release from memory. |
 | Shopify (or similar) GCS investor decks return empty | Record Gap + deck URL. Use the SEC exhibit that carried the deck. Do not hammer GCS. | Gap. Do not describe slides that were not retrieved. |
 | FRED key series missing, key unset, empty window, or vendor error | `get_fred_key_series` writes `Gap: FRED ...` for each failed series. The pack is never a silent empty string. | Gap. Do not invent CPI, rates, or a curve. |
-| Yahoo / vendor / TradingAgents news empty | — | Gap. Do not invent headlines. |
-| Calendar YTD blank (no prior-year close in the verified window) | Snapshot line is `—` plus the reason | Gap. Do not invent the percent. |
+| Yahoo / vendor / TradingAgents news empty | Ticker news order is Yahoo, then Alpha Vantage, then Eastmoney via akshare (CN/HK only). An empty or failed vendor is not an article. | `NEWS_EMPTY` after that chain, then Gap. Do not invent headlines. Bull/bear stay one short pass each; the risk desk is skipped. |
+| Calendar YTD blank | If Yahoo `ytdReturn` is empty or 401, compute from OHLC (first close of the year → last close). Snapshot line is `—` only when that history is missing | Gap. Do not invent the percent. |
 | Dividend yield absent from Yahoo info, or the lookup failed | Snapshot line is `—` plus the reason | Gap. Do not invent a yield. A returned `0` is a real zero yield, not a Gap. |
 | Earnings transcript only from Motley Fool, or none at all | Save whatever was retrieved under `transcripts/`. Gap the missing company IR / Quartr / stockanalysis copy. | Do not promote the secondary file to a company transcript. |
 | No sell-side NAV in sources | — | Gap. Do not compute a NAV and present it as street research. |
 
+## Note structure
+
+The written note puts **Gaps near the top**, immediately after the snapshot. **Controlling / major shareholder** and **Management / strategy voice** are the next sections, ahead of peers and technicals. An HTML skeleton with the same order is `docs/templates/deep-note-skeleton.html` (independent layout; not a bank template).
+
 ## Gaps section
 
-Every deep note ends with **Gaps**. Each bullet names the item, the source that failed, and the fallback tried. Empty news, a missing FRED series, a blank YTD, a blocked IR URL, an empty deck, and "no sell-side NAV" are all Gaps. A Gap is not filled with a plausible number.
+Every deep note carries **Gaps** near the top. Each bullet names the item, the source that failed, and the fallback tried. Empty news (`NEWS_EMPTY`), a missing FRED series, a blank YTD, a blocked IR URL, an empty deck, and "no sell-side NAV" are all Gaps. A Gap is not filled with a plausible number.
+
+## Ticker news vendors
+
+Order for `get_news`: **yfinance → alpha_vantage → akshare**. Akshare is Eastmoney and applies to CN/HK symbols; other markets return a non-article placeholder and do not count as a hit. A vendor string of "No news found", an error, or that placeholder tries the next vendor. When the chain is exhausted the tool returns `NEWS_EMPTY` and the graph sets `news_empty`. No headlines are invented. The bull and bear each get one short pass; risk is skipped (a truncated note, no risk-round LLM calls). Research mode already stops before the risk desk.
 
 `SOURCES.md` next to the run lists what was retrieved and repeats the Gaps list. The in-repo report tree (`fundamentals.md`, `news.md`, `market.md`) carries the same headings when the agents write the note.
 
@@ -78,9 +95,24 @@ Fill from retrieved sources. Delete nothing by guessing. This skeleton is not a 
 ```markdown
 # {TICKER} deep note — {as-of date}
 
+## Snapshot
+- {one or two retrieved facts; no filler}
+
+## Gaps
+- {item} — {source that failed} — {blocked URL if any} — fallback {tried or "none"} — still open
+- IR example: Gap: IR CDN blocked — Akamai 403 — https://ir.example/release — do not retry; SEC EX-99 mirror {used or still open}
+- News example: NEWS_EMPTY after yfinance, alpha_vantage, akshare — do not invent a headline
+
+## Controlling / major shareholder
+- {holder, role}: {ownership % or "not in source"}; voting cap {or Gap}; fees {or Gap}
+- Controller material: {letter or presentation, date, url} | Gap
+
+## Management / strategy voice
+- {Speaker, role}, {date}, {document, url}: "{quote}" — primary | secondary
+
 ## Market data
 - Last / range: {from verified snapshot}
-- Calendar YTD simple return: {snapshot line, or — (reason)}
+- Calendar YTD simple return: {Yahoo ytdReturn, or OHLC first close of year → last close, or — (history missing)}
 - Dividend yield: {Yahoo dividendYield as returned, or — (reason)}
 
 ## FRED key series
@@ -94,22 +126,11 @@ Fill from retrieved sources. Delete nothing by guessing. This skeleton is not a 
 ## Filings
 - {form, date, url}
 
-## Controlling / major shareholder
-- {holder, role}: {ownership % or "not in source"}; voting cap {or Gap}; fees {or Gap}
-- Controller material: {letter or presentation, date, url} | Gap
-
-## Management / strategy voice
-- {Speaker, role}, {date}, {document, url}: "{quote}" — primary | secondary
-
 ## Peers
 - {only retrieved figures}
 
 ## TA
 - {indicator, date, value from tools}
-
-## Gaps
-- {item} — {source that failed} — {blocked URL if any} — fallback {tried or "none"} — still open
-- IR example: Gap: IR CDN blocked — Akamai 403 — https://ir.example/release — do not retry; SEC EX-99 mirror {used or still open}
 
 ## Residue
 - {blocked url or unused excerpt, not promoted into the note}

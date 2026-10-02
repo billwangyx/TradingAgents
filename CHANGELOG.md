@@ -10,6 +10,9 @@ Breaking changes within the 0.x line are called out explicitly.
 
 ### Added
 
+- **Deep-note CLI and research-mode graph.** `python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD [--out DIR]` runs analysts → bull → bear → research manager and stops. The trader, risk desk, and portfolio manager stay available with `--full-trading-graph`. Analysts default to `deepseek-flash` (`deepseek-v4-flash`) when the provider is DeepSeek. The command does not place orders.
+- **Empty ticker news.** Vendor order is Yahoo, then Alpha Vantage, then Eastmoney via akshare (CN/HK). A miss is not an article. The chain ends in `NEWS_EMPTY`, which shortens the bull/bear exchange to one pass each and skips the risk debate. No headlines are invented.
+- **Calendar YTD from OHLC.** The verified snapshot uses Yahoo `ytdReturn` when present. An empty field or a 401 falls back to the first close of the calendar year versus the latest close. A Gap is written only when that history is missing.
 - **Deep single-stock note harness.** [`docs/deep-note-harness.md`](docs/deep-note-harness.md)
   records the checklist used on the 2026-10-02 equity notes: market data, filings,
   a required controlling-shareholder pack (ownership, voting caps, fees, controller
