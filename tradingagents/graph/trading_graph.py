@@ -15,6 +15,7 @@ from tradingagents.agents.utils.agent_utils import (
     build_instrument_context,
     get_balance_sheet,
     get_cashflow,
+    get_fred_key_series,
     get_fundamentals,
     get_global_news,
     get_income_statement,
@@ -185,6 +186,7 @@ class TradingAgentsGraph:
                     get_news,
                     get_global_news,
                     get_insider_transactions,
+                    get_fred_key_series,
                     get_macro_indicators,
                     get_prediction_markets,
                 ]

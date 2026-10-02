@@ -32,6 +32,18 @@ DEFAULT_LOOKBACK_DAYS = 365
 # daily series (yields, VIX) over a long window would otherwise flood context.
 MAX_ROWS = 40
 
+# Deep-note macro set. A single-stock pass attempts every alias; a miss is an
+# explicit Gap line from ``fetch_deep_note_key_series``, not an empty string.
+DEEP_NOTE_FRED_SERIES: tuple[str, ...] = (
+    "fed_funds_rate",
+    "2y_treasury",
+    "10y_treasury",
+    "yield_curve",
+    "cpi",
+    "core_pce",
+    "unemployment",
+)
+
 # Curated human-friendly aliases -> FRED series IDs. Anything not listed is used
 # verbatim as a raw FRED series ID, so power users are never limited to this set.
 MACRO_SERIES = {
@@ -235,3 +247,78 @@ def get_macro_data(
     )
 
     return header + summary + note + table
+
+
+def _fred_body_gap_reason(body: str) -> str | None:
+    """Return a Gap reason when a FRED report is empty or has no print."""
+    text = (body or "").strip()
+    if not text:
+        return "empty FRED response"
+    lowered = text.lower()
+    if "no observations" in lowered:
+        return "no observations in the requested window"
+    if "not found" in lowered or "not a known macro alias" in lowered:
+        first = text.splitlines()[0]
+        return first
+    return None
+
+
+def _compact_fred_success(body: str) -> str:
+    """Keep the series title and latest print so a seven-series pack stays readable."""
+    kept = [
+        line
+        for line in body.splitlines()
+        if line.startswith("## FRED:")
+        or line.startswith("- Units:")
+        or line.startswith("- Frequency:")
+        or line.startswith("- Window:")
+        or line.startswith("**Latest:**")
+    ]
+    return "\n".join(kept) if kept else body
+
+
+def fetch_deep_note_key_series(
+    curr_date: str,
+    look_back_days: int | None = None,
+) -> str:
+    """Attempt the deep-note FRED set and turn every failure into a Gap line.
+
+    Never returns an empty string. A missing API key, a failed request, an
+    unknown series, or a window with no observations is written as
+    ``Gap: FRED ...``. Successful series keep their latest attributed print.
+    """
+    lines = [
+        "## FRED key series (deep note)",
+        "Attempted: " + ", ".join(DEEP_NOTE_FRED_SERIES),
+        "",
+    ]
+    try:
+        get_api_key()
+    except FredNotConfiguredError as exc:
+        lines.append(
+            "Gap: FRED key series — "
+            + ", ".join(DEEP_NOTE_FRED_SERIES)
+            + f" — {exc} Do not invent a print."
+        )
+        return "\n".join(lines)
+
+    for alias in DEEP_NOTE_FRED_SERIES:
+        try:
+            body = get_macro_data(alias, curr_date, look_back_days)
+        except Exception as exc:
+            lines.append(
+                f"Gap: FRED {alias} — {type(exc).__name__}: {exc}. Do not invent a print."
+            )
+            lines.append("")
+            continue
+        reason = _fred_body_gap_reason(body)
+        if reason:
+            lines.append(f"Gap: FRED {alias} — {reason}. Do not invent a print.")
+        else:
+            lines.append(_compact_fred_success(body))
+        lines.append("")
+
+    rendered = "\n".join(lines).strip()
+    if not rendered:
+        return "Gap: FRED key series — helper produced an empty report. Do not invent a print."
+    return rendered

@@ -22,6 +22,14 @@ Breaking changes within the 0.x line are called out explicitly.
   empty news or a blank YTD are Gaps and are not invented. Fundamentals, news,
   and market analysts, plus the bull, bear, and research manager, append those
   rules from `tradingagents/agents/utils/deep_note.py`.
+- **Deep-note egress helpers.** `get_fred_key_series` attempts the FRED key
+  set and writes an explicit `Gap:` line on a missing key, empty window, or
+  error (no silent empty). The verified Yahoo snapshot now includes calendar
+  YTD simple return and dividend yield, or `—` plus a reason. IR blocks are
+  recorded with `ir_cdn_gap` (URL included; no CDN retry) and resolved from
+  SEC EX-99, exchange filings, or GlobeNewswire. Earnings transcripts follow
+  company IR → Quartr/stockanalysis → Motley Fool (secondary) and save under
+  `transcripts/`; a secondary-only pack stays a Gap.
 
 ## [0.2.5] — 2026-05-11
 

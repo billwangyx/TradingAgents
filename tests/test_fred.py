@@ -190,5 +190,60 @@ class FredRoutingTests(unittest.TestCase):
         self.assertIn("DATA_UNAVAILABLE", out)
 
 
+@pytest.mark.unit
+class FredDeepNoteKeySeriesTests(unittest.TestCase):
+    def test_missing_key_is_an_explicit_gap_for_every_series(self):
+        with mock.patch.object(
+            fred,
+            "get_api_key",
+            side_effect=fred.FredNotConfiguredError("FRED_API_KEY not set"),
+        ):
+            out = fred.fetch_deep_note_key_series("2026-05-13")
+        self.assertTrue(out.strip())
+        self.assertIn("Gap: FRED key series", out)
+        for alias in fred.DEEP_NOTE_FRED_SERIES:
+            self.assertIn(alias, out)
+        self.assertNotIn("**Latest:**", out)
+        self.assertIn("Do not invent a print", out)
+
+    def test_empty_window_is_a_gap_and_success_keeps_the_print(self):
+        def _body(indicator, curr_date, look_back_days=None):
+            if indicator == "cpi":
+                return (
+                    "## FRED: Consumer Price Index (CPIAUCSL)\n"
+                    "- Units: Index\n"
+                    "\nNo observations for CPIAUCSL in this window.\n"
+                )
+            return (
+                f"## FRED: {indicator} (ID)\n"
+                "- Units: %\n"
+                "- Frequency: Monthly\n"
+                "- Window: 2025-05-13 to 2026-05-13\n"
+                "\n**Latest:** 4.2 (2026-05-01)\n"
+                "\n| Date | Value |\n| --- | --- |\n| 2026-05-01 | 4.2 |\n"
+            )
+
+        with mock.patch.object(fred, "get_api_key", return_value="test-key"), \
+                mock.patch.object(fred, "get_macro_data", side_effect=_body):
+            out = fred.fetch_deep_note_key_series("2026-05-13")
+        self.assertTrue(out.strip())
+        self.assertIn("Gap: FRED cpi — no observations", out)
+        self.assertIn("**Latest:** 4.2 (2026-05-01)", out)
+        self.assertIn("fed_funds_rate", out)
+
+    def test_request_error_is_a_gap_and_the_pack_continues(self):
+        def _body(indicator, curr_date, look_back_days=None):
+            if indicator == "unemployment":
+                raise RuntimeError("fred down")
+            return "## FRED: ok (ID)\n**Latest:** 1 (2026-05-01)\n"
+
+        with mock.patch.object(fred, "get_api_key", return_value="test-key"), \
+                mock.patch.object(fred, "get_macro_data", side_effect=_body):
+            out = fred.fetch_deep_note_key_series("2026-05-13")
+        self.assertIn("Gap: FRED unemployment — RuntimeError: fred down", out)
+        self.assertIn("**Latest:** 1 (2026-05-01)", out)
+        self.assertTrue(out.strip())
+
+
 if __name__ == "__main__":
     unittest.main()
