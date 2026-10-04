@@ -1,9 +1,9 @@
 """Compress financial-report text already on disk into a short fundamental pack.
 
-deep-note passes the pack to the research manager. This module only reads
-``.txt`` and ``.md`` files that are already in the caller-supplied directory
-(including ``SOURCES.md``). It does not parse PDFs, run OCR, or download
-anything, and it does not invent figures.
+deep-note passes the pack to the research manager. This module reads ``.txt``,
+``.md``, and PDF files that are already in the caller-supplied directory
+(including ``SOURCES.md``). PDF text is extracted. Nothing is downloaded, and
+figures are not invented.
 """
 
 from __future__ import annotations
@@ -12,11 +12,13 @@ import re
 from pathlib import Path
 
 TEXT_SUFFIXES = frozenset({".txt", ".md"})
+PDF_SUFFIXES = frozenset({".pdf"})
+READ_SUFFIXES = TEXT_SUFFIXES | PDF_SUFFIXES
 
 # A caller-supplied directory with no financial text. Not fundamental material.
 EMPTY_DIR_GAP = (
-    "Gap: no .txt or .md financial text in the local research directory. "
-    "PDFs were not parsed. Nothing was downloaded. Do not invent figures."
+    "Gap: no .txt, .md, or readable PDF financial text in the local research "
+    "directory. Nothing was downloaded. Do not invent figures."
 )
 
 _MAX_READ_CHARS = 2_000_000
@@ -49,11 +51,10 @@ _HEADLINE = re.compile(
 
 
 def build_local_fundamental_pack(directory: Path | str) -> str:
-    """Return a short pack quoted from ``.txt`` / ``.md`` in ``directory``.
+    """Return a short pack quoted from ``.txt``, ``.md``, and PDF text in ``directory``.
 
     Only the directory itself is scanned. Subdirectories are left alone.
-    PDFs and every other suffix are ignored. Figures are copied from the
-    files; none are calculated or filled in.
+    Figures are copied from the files; none are calculated or filled in.
     """
     root = Path(directory)
     if not root.is_dir():
@@ -63,7 +64,7 @@ def build_local_fundamental_pack(directory: Path | str) -> str:
         (
             path
             for path in root.iterdir()
-            if path.is_file() and path.suffix.lower() in TEXT_SUFFIXES
+            if path.is_file() and path.suffix.lower() in READ_SUFFIXES
         ),
         key=lambda path: (path.name.lower() != "sources.md", path.name.lower()),
     )
@@ -71,8 +72,8 @@ def build_local_fundamental_pack(directory: Path | str) -> str:
         return EMPTY_DIR_GAP
 
     parts = [
-        "Local fundamental pack. Quoted from .txt/.md already in the directory. "
-        "PDFs were not parsed. Nothing was downloaded. Do not invent figures.",
+        "Local fundamental pack. Quoted from .txt, .md, and PDF text already in "
+        "the directory. Nothing was downloaded. Do not invent figures.",
         f"Files: {', '.join(path.name for path in files)}",
     ]
     for path in files:
@@ -85,6 +86,31 @@ def build_local_fundamental_pack(directory: Path | str) -> str:
 
 
 def _compress_file(path: Path) -> str:
+    if path.suffix.lower() in PDF_SUFFIXES:
+        raw = _read_pdf(path)
+        if raw is None:
+            return (
+                f"Gap: could not extract text from {path.name}. "
+                "Do not invent figures."
+            )
+        note = ""
+        if len(raw) > _MAX_READ_CHARS:
+            raw = raw[:_MAX_READ_CHARS]
+            note = "\n[file truncated before compression]"
+        if not raw.strip():
+            return (
+                f"Gap: no text extracted from {path.name}. Do not invent figures."
+            )
+        if len(raw) <= _SHORT_FILE_CHARS:
+            return _trim_lines(raw, _SHORT_FILE_CHARS) + note
+        kept = _financial_excerpt(raw)
+        if not kept:
+            head = _trim_lines(raw, 800)
+            return (
+                "Gap: no financial figure line matched in this file. "
+                "Excerpt follows; do not invent figures.\n" + head + note
+            )
+        return kept + note
     try:
         raw = path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
@@ -111,6 +137,16 @@ def _compress_file(path: Path) -> str:
             "Excerpt follows; do not invent figures.\n" + head + note
         )
     return kept + note
+
+
+def _read_pdf(path: Path) -> str | None:
+    """Extract PDF text. A failed read returns None and never the raw bytes."""
+    try:
+        from tradingagents.dataflows.pdf_text import extract_pdf_text
+
+        return extract_pdf_text(path)
+    except Exception:
+        return None
 
 
 def _trim_lines(raw: str, cap: int) -> str:

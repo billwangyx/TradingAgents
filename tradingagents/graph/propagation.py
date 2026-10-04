@@ -24,6 +24,9 @@ class Propagator:
         instrument_context: str = "",
         research_mode: bool = False,
         local_fundamental_pack: str = "",
+        company_filings: str = "",
+        peer_table: str = "",
+        peer_names: str = "",
     ) -> dict[str, Any]:
         """Create the initial state for the agent graph.
 
@@ -67,6 +70,9 @@ class Propagator:
             "market_report": "",
             "fundamentals_report": "",
             "local_fundamental_pack": local_fundamental_pack or "",
+            "company_filings": company_filings or "",
+            "peer_table": peer_table or "",
+            "peer_names": peer_names or "",
             "sentiment_report": "",
             "news_report": "",
             "news_empty": False,

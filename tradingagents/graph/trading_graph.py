@@ -344,6 +344,9 @@ class TradingAgentsGraph:
         trade_date,
         asset_type: str = "stock",
         local_fundamental_pack: str = "",
+        company_filings: str = "",
+        peer_table: str = "",
+        peer_names: str = "",
     ):
         """Run the trading agents graph for a company on a specific date.
 
@@ -383,6 +386,9 @@ class TradingAgentsGraph:
                 trade_date,
                 asset_type=asset_type,
                 local_fundamental_pack=local_fundamental_pack,
+                company_filings=company_filings,
+                peer_table=peer_table,
+                peer_names=peer_names,
             )
         finally:
             if self._checkpointer_ctx is not None:
@@ -411,6 +417,9 @@ class TradingAgentsGraph:
         trade_date,
         asset_type: str = "stock",
         local_fundamental_pack: str = "",
+        company_filings: str = "",
+        peer_table: str = "",
+        peer_names: str = "",
     ):
         """Execute the graph and write the resulting state to disk and memory log."""
         # Initialize state — inject memory log context for PM and the
@@ -425,6 +434,9 @@ class TradingAgentsGraph:
             instrument_context=instrument_context,
             research_mode=self.research_mode,
             local_fundamental_pack=local_fundamental_pack or "",
+            company_filings=company_filings or "",
+            peer_table=peer_table or "",
+            peer_names=peer_names or "",
         )
         args = self.propagator.get_graph_args()
 
@@ -495,6 +507,9 @@ class TradingAgentsGraph:
             "news_report": final_state["news_report"],
             "fundamentals_report": final_state["fundamentals_report"],
             "local_fundamental_pack": final_state.get("local_fundamental_pack", ""),
+            "company_filings": final_state.get("company_filings", ""),
+            "peer_table": final_state.get("peer_table", ""),
+            "peer_names": final_state.get("peer_names", ""),
             "investment_debate_state": {
                 "bull_history": final_state["investment_debate_state"]["bull_history"],
                 "bear_history": final_state["investment_debate_state"]["bear_history"],

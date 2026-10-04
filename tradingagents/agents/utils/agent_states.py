@@ -63,6 +63,18 @@ class AgentState(MessagesState):
         str,
         "Short fundamental pack from a caller-supplied local research directory",
     ]
+    company_filings: Annotated[
+        str,
+        "Extracted exchange filing text (or an explicit gap) read before the rating",
+    ]
+    peer_table: Annotated[
+        str,
+        "Short table for the caller-supplied peer list",
+    ]
+    peer_names: Annotated[
+        str,
+        "Caller-supplied peer names, one per line",
+    ]
 
     # researcher team discussion step
     investment_debate_state: Annotated[

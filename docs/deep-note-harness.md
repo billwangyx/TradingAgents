@@ -10,7 +10,21 @@ python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD --out ./not
 python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD --research-dir ./research/HHH
 ```
 
-`--research-dir` is optional. When it is passed, deep-note reads `.txt` and `.md` already in that directory (including `SOURCES.md`), compresses them into a short fundamental pack, and gives the pack to the research manager along with `fundamentals_report`. PDFs are not parsed, and nothing is downloaded. The research manager also receives `fundamentals_report` before it assigns a rating. With either of those present, Underweight or Overweight is not assigned from price or moving averages alone. If both are missing, the rating behavior is unchanged and the gap is recorded. No figures are invented.
+`--research-dir` is optional. When it is passed, deep-note reads `.txt`, `.md`, and PDF files already in that directory (including `SOURCES.md`), extracts the PDF text, compresses that into a short fundamental pack, and gives the pack to the research manager along with `fundamentals_report` and the exchange filing. Nothing in that directory is downloaded. The research manager reads the exchange filing text before it rates. With fundamental material present, Underweight or Overweight is not assigned from price or moving averages alone. Momentum and technical indicators may answer timing only and are not the sole basis of the recommendation. No figures are invented.
+
+The deep-research note the research manager writes uses this order and no other order:
+
+1. Company fundamentals. The body is the exchange filing text (US 10-Q and 10-K, Hong Kong interim and annual reports, A-share periodic reports, plus an earnings release when a public full text exists). A missing filing is a gap in this section. Price, quotes, and yfinance do not fill it.
+2. Industry.
+3. Comparable companies. 3 to 5 names, same industry and same listing region, from `--peers`, `--peers-file`, or `peers.txt` in the research directory. The model does not invent the list.
+4. Financials. Figures are quoted from the filing text.
+5. Trading conditions, the bull and bear case, and buy/sell timing. The recommendation sentence points back to Company fundamentals and names at least one caller-supplied peer.
+
+```bash
+python -m tradingagents.cli deep-note --ticker 1318.HK --date YYYY-MM-DD --peers "珀莱雅,上海家化,贝泰妮,丸美股份"
+```
+
+`--peers` is the caller-supplied list. It is parsed by `load_peer_names` and passed into `TradingAgentsGraph.propagate` as `peer_names` and the rendered `peer_table`. A name may carry a ticker (`珀莱雅 603605.SS`). `peers.txt` in `--research-dir` is the same list when the flag is omitted.
 
 Defaults: research-mode on, provider `deepseek`, analysts/quick model `deepseek-flash` (API id `deepseek-v4-flash`). The research manager uses `deepseek-v4-pro` unless `--deep-model` is set.
 
@@ -24,11 +38,11 @@ Run the steps in this order. Skip a step only by writing why under Gaps.
 
 1. **Market data.** OHLCV and the verified market snapshot (`get_stock_data`, `get_verified_market_snapshot`, indicators). The snapshot must include **calendar YTD simple return** and **dividend yield** from Yahoo `dividendYield` when that field is present. YTD prefers Yahoo `ytdReturn` when that field is a real number. If `ytdReturn` is empty or the quote lookup returns 401, compute simple price return from verified OHLC: first available close of the calendar year → latest close on or before the analysis date. Gap only when that history is missing. Copy an em-dash line into Gaps. Do not invent the percent.
 2. **FRED key series.** Call `get_fred_key_series` once. It attempts fed funds, the 2-year and 10-year Treasury yields, the 10y–2y curve, CPI, core PCE, and unemployment. A missing key, a failed request, an unknown series, or a window with no observations is an explicit `Gap:` line. The helper does not return an empty string. Do not invent the print.
-3. **Filings.** Statements from the bound fundamentals tools. When a primary filing was actually retrieved, prefer SEC EDGAR, and SEDAR+ for a Canadian issuer. This repo's vendors do not download EDGAR or SEDAR+ themselves.
+3. **Filings.** The research manager reads exchange filing text before it rates. US: latest 10-Q and 10-K from `data.sec.gov` submissions, then the archived HTML (`User-Agent` must name a contact). Hong Kong: HKEX interim and annual report PDFs, plus the results announcement when that PDF downloads. A-shares: cninfo periodic reports, and only when the PDF body downloads. yfinance and Alpha Vantage statements do not fill Company fundamentals. An earnings release or a transcript is attached only when a public full text was retrieved; otherwise the section records a Gap.
 4. **Shareholder / controller pack.** Required. Ownership %, voting caps, fee arrangements, and strategy letters or presentations from the controller (Pershing's letters for HHH are the shape, not a default fact). 13D/13F only when that filing was retrieved. Attribute the source. Insider Form 4 rows are not a substitute.
 5. **Management commentary pack.** Required. CEO, President, and CFO quotes from earnings calls and IR press releases. Distill them into a local `management-*.md` (`management-strategy.md`, or `management-and-pershing.md` when the controller is part of the voice) with speaker, date, and document.
 6. **Earnings transcript.** Source order is company IR, then Quartr or stockanalysis, then Motley Fool marked **secondary**. Save the retrieved text under `transcripts/{ticker}/{call-date}-{source}.md` (helper: `save_retrieved_transcript`). If nothing was retrieved, or the only file is a secondary Motley Fool copy, write a Gap. A secondary quote may stay in the note only with that flag.
-7. **Peers.** Only names and figures that appear in retrieved sources. No borrowed multiples.
+7. **Peers.** 3 to 5 names in the same industry and the same listing region, supplied by the caller (`--peers`, `--peers-file`, or `peers.txt`). The model does not invent the list. Each peer is one short table row: public financials, current valuation, and price trend. A missing quote is a Gap in that cell.
 8. **TA graph.** Indicators chosen and computed by the market analyst. No hand-drawn levels that the series does not show.
 9. **Note + Gaps + residue.** Equity-research HTML (or the markdown report tree under `1_analysts/`) plus a Gaps section plus a short residue list. Residue is blocked URLs and excerpts that were not promoted into the note, kept so a later pass can retry. Residue is not a print.
 
@@ -98,45 +112,30 @@ Fill from retrieved sources. Delete nothing by guessing. This skeleton is not a 
 ```markdown
 # {TICKER} deep note — {as-of date}
 
-## Snapshot
-- {one or two retrieved facts; no filler}
+## 1. Company fundamentals
+- Exchange filing text: US 10-Q and 10-K, Hong Kong interim and annual reports, or A-share periodic reports
+- Earnings release when a public full text was retrieved, otherwise Gap
+- Earnings transcript when a public full text was retrieved, otherwise Gap: no public full-text earnings transcript
+- Do not fill this section with price, quotes, or yfinance
 
-## Gaps
-- {item} — {source that failed} — {blocked URL if any} — fallback {tried or "none"} — still open
-- IR example: Gap: IR CDN blocked — Akamai 403 — https://ir.example/release — do not retry; SEC EX-99 mirror {used or still open}
-- News example: NEWS_EMPTY after yfinance, alpha_vantage, akshare — do not invent a headline
+## 2. Industry
+- Quoted industry discussion from the filing, or Gap
+- Macro: public source, or Gap
 
-## Controlling / major shareholder
-- {holder, role}: {ownership % or "not in source"}; voting cap {or Gap}; fees {or Gap}
-- Controller material: {letter or presentation, date, url} | Gap
+## 3. Comparable companies
+- 3 to 5 caller-supplied names (same industry, same listing region)
+- Short table only: public financials, current valuation, price trend
+- The model does not add companies
 
-## Management / strategy voice
-- {Speaker, role}, {date}, {document, url}: "{quote}" — primary | secondary
+## 4. Financials
+- Figures quoted from the filing text, not calculated
+- Gap if the filing body was not retrieved. Do not substitute yfinance statements
 
-## Market data
-- Last / range: {from verified snapshot}
-- Calendar YTD simple return: {Yahoo ytdReturn, or OHLC first close of year → last close, or — (history missing)}
-- Dividend yield: {Yahoo dividendYield as returned, or — (reason)}
-
-## FRED key series
-- {alias}: {latest print, or Gap: FRED alias — reason}
-
-## Earnings transcript
-- File: transcripts/{ticker}/{call-date}-{source}.md
-- Rank: company IR | Quartr | stockanalysis | Motley Fool (secondary)
-- Gap if none, or if the only file is secondary
-
-## Filings
-- {form, date, url}
-
-## Peers
-- {only retrieved figures}
-
-## TA
-- {indicator, date, value from tools}
-
-## Residue
-- {blocked url or unused excerpt, not promoted into the note}
+## 5. Trading conditions, the bull and bear case, and buy/sell timing
+- Bull case and bear case
+- Timing only: momentum and technical indicators are not the sole basis of the recommendation
+- News and material events when a public source exists, otherwise Gap
+- Recommendation sentence points back to Company fundamentals and names at least one caller-supplied peer
 ```
 
 Local files beside the run, not committed:

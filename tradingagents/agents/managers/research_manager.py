@@ -13,6 +13,7 @@ from tradingagents.agents.utils.deep_note import (
     downstream_instruction,
     news_empty_debate_note,
 )
+from tradingagents.agents.utils.deep_research_note import compose_deep_research_note
 from tradingagents.agents.utils.rating import parse_rating
 from tradingagents.agents.utils.structured import (
     bind_structured,
@@ -24,6 +25,7 @@ from tradingagents.agents.utils.structured import (
 _GAP_ONLY_PREFIXES = (
     "Gap: fundamentals_report is missing",
     "Gap: no .txt or .md financial text",
+    "Gap: no .txt, .md, or readable PDF",
 )
 
 _RECOMMENDATION_RE = re.compile(
@@ -65,6 +67,9 @@ def create_research_manager(llm):
         history = state["investment_debate_state"].get("history", "")
         fundamentals_report = state.get("fundamentals_report") or ""
         local_pack = state.get("local_fundamental_pack") or ""
+        company_filings = state.get("company_filings") or ""
+        peer_table = state.get("peer_table") or ""
+        peer_names = _peer_names(state.get("peer_names") or "")
 
         investment_debate_state = state["investment_debate_state"]
 
@@ -89,6 +94,16 @@ Commit to a clear stance whenever the debate's strongest arguments warrant one; 
 
 ---
 
+{filings_input(company_filings)}
+
+---
+
+{peer_input(peer_table)}
+
+The written note uses this order and no other order: 1. Company fundamentals 2. Industry 3. Comparable companies 4. Financials 5. Trading conditions, the bull and bear case, and buy/sell timing. Company fundamentals is the exchange filing text above. Do not fill that section with price, quotes, or yfinance. Comparable companies are only the caller-supplied table. Do not add companies. Momentum and technical indicators may answer timing only and are not the sole basis of the recommendation. The recommendation must point back to the Company fundamentals section and name at least one caller-supplied peer.
+
+---
+
 **Debate History:**
 {history}""" + downstream_instruction() + news_empty_debate_note(state) + get_language_instruction()
 
@@ -104,6 +119,18 @@ Commit to a clear stance whenever the debate's strongest arguments warrant one; 
             debate=history,
             fundamentals_report=fundamentals_report,
             local_pack=local_pack,
+            company_filings=company_filings,
+        )
+        investment_plan = compose_deep_research_note(
+            company_filings=company_filings,
+            local_pack=local_pack,
+            peer_table=peer_table,
+            peer_names=peer_names,
+            debate=history,
+            news_report=state.get("news_report") or "",
+            news_empty=bool(state.get("news_empty")),
+            market_report=state.get("market_report") or "",
+            manager_plan=investment_plan,
         )
 
         new_investment_debate_state = {
@@ -147,9 +174,42 @@ def fundamentals_input(fundamentals_report: str, local_pack: str) -> str:
     return "\n".join(sections)
 
 
-def fundamental_material_present(fundamentals_report: str, local_pack: str) -> bool:
-    """True when a report or a local pack actually contains fundamental text."""
-    return _substantive(fundamentals_report) or _substantive(local_pack)
+def filings_input(company_filings: str) -> str:
+    """Exchange filing text the manager reads before it rates."""
+    body = (company_filings or "").strip()
+    if not body:
+        return (
+            "**Exchange filings:**\n"
+            "Gap: no exchange filing text was supplied. "
+            "Do not fill Company fundamentals with price, quotes, or yfinance."
+        )
+    return "**Exchange filings:**\n" + body
+
+
+def peer_input(peer_table: str) -> str:
+    """Caller-supplied peer table. The model does not extend the list."""
+    body = (peer_table or "").strip()
+    if not body:
+        return (
+            "**Comparable companies:**\n"
+            "Gap: no caller-supplied peer list. Do not invent companies."
+        )
+    return (
+        "**Comparable companies (caller-supplied; do not add names):**\n" + body
+    )
+
+
+def fundamental_material_present(
+    fundamentals_report: str,
+    local_pack: str,
+    company_filings: str = "",
+) -> bool:
+    """True when a report, a local pack, or filing text contains fundamental text."""
+    return (
+        _substantive(fundamentals_report)
+        or _substantive(local_pack)
+        or _substantive(company_filings)
+    )
 
 
 def _substantive(text: str) -> bool:
@@ -193,19 +253,24 @@ def _figure_tokens(text: str) -> set[str]:
     return tokens
 
 
+def _peer_names(value: str) -> list[str]:
+    return [line.strip() for line in (value or "").splitlines() if line.strip()]
+
+
 def constrain_price_only_tilt(
     plan_text: str,
     *,
     debate: str,
     fundamentals_report: str,
     local_pack: str,
+    company_filings: str = "",
 ) -> str:
     """Drop Underweight/Overweight when price or a moving average is the only basis.
 
     Fundamentals missing: leave the plan as the model wrote it. The prompt
     already records that gap. Buy and Sell are unchanged.
     """
-    if not fundamental_material_present(fundamentals_report, local_pack):
+    if not fundamental_material_present(fundamentals_report, local_pack, company_filings):
         if _MISSING_GAP not in (plan_text or ""):
             return (plan_text or "").rstrip() + "\n\n" + _MISSING_GAP
         return plan_text
@@ -216,7 +281,7 @@ def constrain_price_only_tilt(
     if rating not in {"Underweight", "Overweight"}:
         return plan_text
 
-    material = f"{fundamentals_report or ''}\n{local_pack or ''}"
+    material = f"{fundamentals_report or ''}\n{local_pack or ''}\n{company_filings or ''}"
     if rationale_uses_supplied_fundamentals(plan_text, material):
         return plan_text
 
