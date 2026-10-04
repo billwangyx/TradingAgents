@@ -59,6 +59,10 @@ class AgentState(MessagesState):
         str, "Report from the News Researcher of current world affairs"
     ]
     fundamentals_report: Annotated[str, "Report from the Fundamentals Researcher"]
+    local_fundamental_pack: Annotated[
+        str,
+        "Short fundamental pack from a caller-supplied local research directory",
+    ]
 
     # researcher team discussion step
     investment_debate_state: Annotated[

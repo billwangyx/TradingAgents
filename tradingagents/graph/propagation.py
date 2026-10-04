@@ -23,6 +23,7 @@ class Propagator:
         past_context: str = "",
         instrument_context: str = "",
         research_mode: bool = False,
+        local_fundamental_pack: str = "",
     ) -> dict[str, Any]:
         """Create the initial state for the agent graph.
 
@@ -65,6 +66,7 @@ class Propagator:
             ),
             "market_report": "",
             "fundamentals_report": "",
+            "local_fundamental_pack": local_fundamental_pack or "",
             "sentiment_report": "",
             "news_report": "",
             "news_empty": False,

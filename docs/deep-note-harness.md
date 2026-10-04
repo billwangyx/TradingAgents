@@ -7,7 +7,10 @@ The deep-note command defaults to `research_mode`: analysts → bull → bear �
 ```bash
 python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD
 python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD --out ./notes/HHH
+python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD --research-dir ./research/HHH
 ```
+
+`--research-dir` is optional. When it is passed, deep-note reads `.txt` and `.md` already in that directory (including `SOURCES.md`), compresses them into a short fundamental pack, and gives the pack to the research manager along with `fundamentals_report`. PDFs are not parsed, and nothing is downloaded. The research manager also receives `fundamentals_report` before it assigns a rating. With either of those present, Underweight or Overweight is not assigned from price or moving averages alone. If both are missing, the rating behavior is unchanged and the gap is recorded. No figures are invented.
 
 Defaults: research-mode on, provider `deepseek`, analysts/quick model `deepseek-flash` (API id `deepseek-v4-flash`). The research manager uses `deepseek-v4-pro` unless `--deep-model` is set.
 
@@ -80,7 +83,7 @@ Every deep note carries **Gaps** near the top. Each bullet names the item, the s
 
 ## Ticker news vendors
 
-Order for `get_news`: **yfinance → alpha_vantage → akshare**. Akshare is Eastmoney and applies to CN/HK symbols; other markets return a non-article placeholder and do not count as a hit. A vendor string of "No news found", an error, or that placeholder tries the next vendor. When the chain is exhausted the tool returns `NEWS_EMPTY` and the graph sets `news_empty`. No headlines are invented. The bull and bear each get one short pass; risk is skipped (a truncated note, no risk-round LLM calls). Research mode already stops before the risk desk.
+Order for `get_news`: **yfinance → alpha_vantage → akshare**. Akshare is Eastmoney and applies to CN/HK symbols; other markets return a non-article placeholder and do not count as a hit. If Yahoo `Ticker.get_news` is empty, that same yfinance call reads Yahoo Finance headline RSS (`feeds.finance.yahoo.com`) before the result is a miss. A `.HK` ticker uses the HK feed (`region=HK`, `lang=zh-Hant`); a plain US ticker uses the US feed (`region=US`, `lang=en-US`). Google News RSS and `search-api-web.eastmoney.com` are not used. Items from that RSS are real headlines in the existing news format, so the chain does not emit `NEWS_EMPTY` for that fetch. A vendor string of "No news found", an error, or that placeholder tries the next vendor. When the chain is exhausted the tool returns `NEWS_EMPTY` and the graph sets `news_empty`. No headlines are invented. The bull and bear each get one short pass; risk is skipped (a truncated note, no risk-round LLM calls). Research mode already stops before the risk desk.
 
 `SOURCES.md` next to the run lists what was retrieved and repeats the Gaps list. The in-repo report tree (`fundamentals.md`, `news.md`, `market.md`) carries the same headings when the agents write the note.
 
