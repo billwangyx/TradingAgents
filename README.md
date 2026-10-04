@@ -108,6 +108,7 @@ Headless, one ticker, research-mode by default (stops after the research manager
 ```bash
 python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD
 python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD --out ./notes/HHH
+python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD --research-dir ./research/HHH
 ```
 
 Analysts default to `deepseek-flash` (`deepseek-v4-flash`) when the provider is DeepSeek. Ticker news tries Yahoo, then Alpha Vantage, then Eastmoney/akshare, and sets `NEWS_EMPTY` only after that chain. YTD uses Yahoo `ytdReturn`, or the first close of the year through the last close when that field is empty or the quote returns 401.

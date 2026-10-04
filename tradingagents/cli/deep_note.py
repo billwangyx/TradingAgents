@@ -8,6 +8,7 @@ Examples::
 
     python -m tradingagents.cli deep-note --ticker HHH --date 2026-10-02
     python -m tradingagents.cli deep-note --ticker HHH --date 2026-10-02 --out ./notes/HHH
+    python -m tradingagents.cli deep-note --ticker HHH --date 2026-10-02 --research-dir ./research/HHH
 """
 
 from __future__ import annotations
@@ -19,6 +20,9 @@ from typing import Annotated
 
 import typer
 
+from tradingagents.agents.utils.local_fundamental_pack import (
+    build_local_fundamental_pack,
+)
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.llm_clients.model_catalog import (
     resolve_deep_think_model,
@@ -58,6 +62,18 @@ def build_deep_note_config(
         provider, deep_model if deep_model else config.get("deep_think_llm")
     )
     return config
+
+
+def _local_pack_from_research_dir(research_dir: Path | None) -> str:
+    """Compress caller-supplied .txt/.md, or return empty when no directory was passed."""
+    if research_dir is None:
+        return ""
+    path = Path(research_dir)
+    if not path.is_dir():
+        raise typer.BadParameter(
+            f"research directory does not exist or is not a directory: {path}"
+        )
+    return build_local_fundamental_pack(path)
 
 
 def _parse_analysts(raw: str | None) -> tuple[str, ...]:
@@ -110,6 +126,19 @@ def deep_note(
         str | None,
         typer.Option("--analysts", help="Comma-separated analysts. Default: market,social,news,fundamentals."),
     ] = None,
+    research_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--research-dir",
+            help=(
+                "Optional local directory of financial-report text already on disk "
+                "(.txt and .md, including SOURCES.md). When set, that text is "
+                "compressed into a short fundamental pack and given to the research "
+                "manager with fundamentals_report. PDFs are not parsed and nothing "
+                "is downloaded."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Run one equity note. Research only; does not place orders.
 
@@ -128,6 +157,8 @@ def deep_note(
     if not ticker:
         raise typer.BadParameter("ticker is required")
 
+    local_pack = _local_pack_from_research_dir(research_dir)
+
     selected = _parse_analysts(analysts)
     config = build_deep_note_config(
         provider=provider.strip().lower(),
@@ -140,7 +171,9 @@ def deep_note(
     from tradingagents.graph.trading_graph import TradingAgentsGraph
 
     graph = TradingAgentsGraph(selected_analysts=selected, config=config)
-    final_state, rating = graph.propagate(ticker, date)
+    final_state, rating = graph.propagate(
+        ticker, date, local_fundamental_pack=local_pack
+    )
     report_path = graph.save_reports(final_state, ticker, save_path=out)
     mode = "research-mode (stops after Research Manager)" if research_mode else "full trading graph"
     news = "NEWS_EMPTY" if final_state.get("news_empty") else "news present"

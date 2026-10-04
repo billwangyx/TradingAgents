@@ -7,7 +7,10 @@ The deep-note command defaults to `research_mode`: analysts → bull → bear �
 ```bash
 python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD
 python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD --out ./notes/HHH
+python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD --research-dir ./research/HHH
 ```
+
+`--research-dir` is optional. When it is passed, deep-note reads `.txt` and `.md` already in that directory (including `SOURCES.md`), compresses them into a short fundamental pack, and gives the pack to the research manager along with `fundamentals_report`. PDFs are not parsed, and nothing is downloaded. The research manager also receives `fundamentals_report` before it assigns a rating. With either of those present, Underweight or Overweight is not assigned from price or moving averages alone. If both are missing, the rating behavior is unchanged and the gap is recorded. No figures are invented.
 
 Defaults: research-mode on, provider `deepseek`, analysts/quick model `deepseek-flash` (API id `deepseek-v4-flash`). The research manager uses `deepseek-v4-pro` unless `--deep-model` is set.
 

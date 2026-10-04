@@ -258,6 +258,7 @@ def test_deep_note_cli_help():
     assert "--ticker" in out
     assert "--date" in out
     assert "--out" in out
+    assert "--research-dir" in out
     assert "deepseek-flash" in out
     assert "research" in out.lower()
     assert "order" in out.lower()

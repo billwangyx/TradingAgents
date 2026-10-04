@@ -282,7 +282,9 @@ class TestResearchManagerAgent:
         llm.invoke.return_value = MagicMock(content=plain_response)
         rm = create_research_manager(llm)
         result = rm(_make_rm_state())
-        assert result["investment_plan"] == plain_response
+        assert result["investment_plan"].startswith(plain_response)
+        assert "Gap: fundamentals_report is missing" in result["investment_plan"]
+        assert "Do not invent figures." in result["investment_plan"]
 
 
 # ---------------------------------------------------------------------------
