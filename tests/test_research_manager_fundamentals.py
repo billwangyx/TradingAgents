@@ -163,10 +163,13 @@ def test_deep_note_passes_research_dir_pack_to_propagate(tmp_path, monkeypatch):
         def __init__(self, *args, **kwargs):
             captured["config"] = kwargs.get("config")
 
-        def propagate(self, ticker, date, asset_type="stock", local_fundamental_pack=""):
+        def propagate(self, ticker, date, asset_type="stock", local_fundamental_pack="", **kwargs):
             captured["ticker"] = ticker
             captured["date"] = date
             captured["pack"] = local_fundamental_pack
+            captured["filings"] = kwargs.get("company_filings", "")
+            captured["peers"] = kwargs.get("peer_table", "")
+            captured["peer_names"] = kwargs.get("peer_names", "")
             return {"news_empty": False}, "Hold"
 
         def save_reports(self, final_state, ticker, save_path=None):
@@ -175,6 +178,14 @@ def test_deep_note_passes_research_dir_pack_to_propagate(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "tradingagents.graph.trading_graph.TradingAgentsGraph",
         FakeGraph,
+    )
+    monkeypatch.setattr(
+        "tradingagents.cli.deep_note.fetch_company_filings",
+        lambda *args, **kwargs: "FILING_MARKER Revenue was 1.0 million.",
+    )
+    monkeypatch.setattr(
+        "tradingagents.cli.deep_note.build_peer_table",
+        lambda names, **kwargs: "PEER_TABLE " + ",".join(names),
     )
     from tradingagents.cli.deep_note import deep_note
 
@@ -283,7 +294,7 @@ def test_overweight_stands_when_rationale_uses_the_supplied_fundamentals():
     ))
     plan = result["investment_plan"]
     assert _recommendation(plan) == "Overweight"
-    assert "sole basis" not in plan
+    assert "was not assigned" not in plan
 
 
 @pytest.mark.unit

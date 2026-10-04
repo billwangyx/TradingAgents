@@ -265,20 +265,23 @@ def test_deep_note_cli_help():
 
 
 @pytest.mark.unit
-def test_note_template_puts_gaps_and_holders_first():
+def test_note_template_uses_the_deep_research_section_order():
     doc = (_ROOT / "docs" / "deep-note-harness.md").read_text(encoding="utf-8")
     skeleton = doc.split("## Skeleton", 1)[1]
-    gaps = skeleton.index("## Gaps")
-    holder = skeleton.index("## Controlling / major shareholder")
-    voice = skeleton.index("## Management / strategy voice")
-    peers = skeleton.index("## Peers")
-    assert gaps < holder < voice < peers
+    fundamentals = skeleton.index("## 1. Company fundamentals")
+    industry = skeleton.index("## 2. Industry")
+    peers = skeleton.index("## 3. Comparable companies")
+    financials = skeleton.index("## 4. Financials")
+    trading = skeleton.index("## 5. Trading conditions")
+    assert fundamentals < industry < peers < financials < trading
     assert "yfinance → alpha_vantage → akshare" in doc or "yfinance, alpha_vantage, akshare" in doc
     assert "research_mode" in doc
     assert "deepseek-flash" in doc
 
     html = (_ROOT / "docs" / "templates" / "deep-note-skeleton.html").read_text(encoding="utf-8")
-    assert html.index("Exhibit 1 · Gaps") < html.index("Controlling / major shareholder")
-    assert html.index("Controlling / major shareholder") < html.index("Management / strategy")
+    assert html.index("1. Company fundamentals") < html.index("2. Industry")
+    assert html.index("2. Industry") < html.index("3. Comparable companies")
+    assert html.index("3. Comparable companies") < html.index("4. Financials")
+    assert html.index("4. Financials") < html.index("5. Trading conditions")
     assert "not a Morgan Stanley" in html
     assert "do not invent a headline" in html.lower() or "Do not invent" in html

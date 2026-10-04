@@ -31,20 +31,22 @@
   <p class="meta">As of {Asia/Shanghai time, labeled CST} · source {retrieved sources} · coverage {quoted}/{total}</p>
   <div class="snapshot">{one or two retrieved facts. No filler. No invented print.}</div>
 
-  <h2>Exhibit 1 · Gaps</h2>
-  <ul>
-    <li>{item} — {source that failed} — {blocked URL if any} — fallback {tried or "none"} — still open</li>
-    <li>NEWS_EMPTY after yfinance, alpha_vantage, akshare — do not invent a headline</li>
-    <li>YTD — Gap only when calendar-year OHLC history is missing</li>
-  </ul>
+  <h2>1. Company fundamentals</h2>
+  <p>{exchange filing text, or Gap}. Do not fill this section with price, quotes, or yfinance. Earnings transcript: Gap when no public full text exists. NEWS_EMPTY after yfinance, alpha_vantage, akshare — do not invent a headline.</p>
 
-  <h2>Exhibit 2 · Controlling / major shareholder</h2>
-  <p>{holder, role}: {ownership % or "not in source"}; voting cap {or Gap}; fees {or Gap}. Controller material: {letter or presentation, date, url}.</p>
+  <h2>2. Industry</h2>
+  <p>{quoted from the filing, or Gap}. Macro: {public source, or Gap}.</p>
 
-  <h2>Exhibit 3 · Management / strategy</h2>
-  <p>{Speaker, role}, {date}, {document, url}: "{quote}" — primary | secondary.</p>
+  <h2>3. Comparable companies</h2>
+  <p>{3 to 5 caller-supplied names}. Short table only. The model does not add companies.</p>
 
-  <h2>Exhibit 4 · Market</h2>
+  <h2>4. Financials</h2>
+  <p>{figures quoted from the filing, not calculated}. YTD — Gap only when calendar-year OHLC history is missing, and YTD is timing context, not this section.</p>
+
+  <h2>5. Trading conditions, the bull and bear case, and buy/sell timing</h2>
+  <p>{bull case} {bear case} Timing only. The recommendation points back to Company fundamentals and names one caller-supplied peer.</p>
+
+  <h2>Market snapshot (timing context only)</h2>
   <table>
     <thead>
       <tr>

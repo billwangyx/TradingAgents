@@ -9,6 +9,7 @@ Examples::
     python -m tradingagents.cli deep-note --ticker HHH --date 2026-10-02
     python -m tradingagents.cli deep-note --ticker HHH --date 2026-10-02 --out ./notes/HHH
     python -m tradingagents.cli deep-note --ticker HHH --date 2026-10-02 --research-dir ./research/HHH
+    python -m tradingagents.cli deep-note --ticker 1318.HK --date 2026-10-04 --peers "珀莱雅,上海家化,贝泰妮,丸美股份"
 """
 
 from __future__ import annotations
@@ -23,6 +24,8 @@ import typer
 from tradingagents.agents.utils.local_fundamental_pack import (
     build_local_fundamental_pack,
 )
+from tradingagents.agents.utils.peer_table import build_peer_table, load_peer_names
+from tradingagents.dataflows.company_filings import fetch_company_filings
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.llm_clients.model_catalog import (
     resolve_deep_think_model,
@@ -65,7 +68,7 @@ def build_deep_note_config(
 
 
 def _local_pack_from_research_dir(research_dir: Path | None) -> str:
-    """Compress caller-supplied .txt/.md, or return empty when no directory was passed."""
+    """Compress caller-supplied .txt/.md/PDF text, or return empty when no directory was passed."""
     if research_dir is None:
         return ""
     path = Path(research_dir)
@@ -74,6 +77,28 @@ def _local_pack_from_research_dir(research_dir: Path | None) -> str:
             f"research directory does not exist or is not a directory: {path}"
         )
     return build_local_fundamental_pack(path)
+
+
+def _local_transcript(research_dir: Path | None) -> str:
+    """Full text of a caller-supplied transcript file, or empty."""
+    if research_dir is None:
+        return ""
+    root = Path(research_dir)
+    if not root.is_dir():
+        return ""
+    matches = sorted(
+        path
+        for path in root.iterdir()
+        if path.is_file()
+        and "transcript" in path.name.lower()
+        and path.suffix.lower() in {".txt", ".md"}
+    )
+    if not matches:
+        return ""
+    try:
+        return matches[0].read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
 
 
 def _parse_analysts(raw: str | None) -> tuple[str, ...]:
@@ -132,10 +157,31 @@ def deep_note(
             "--research-dir",
             help=(
                 "Optional local directory of financial-report text already on disk "
-                "(.txt and .md, including SOURCES.md). When set, that text is "
+                "(.txt, .md, and PDF, including SOURCES.md). Text and PDF text are "
                 "compressed into a short fundamental pack and given to the research "
-                "manager with fundamentals_report. PDFs are not parsed and nothing "
-                "is downloaded."
+                "manager with the exchange filing. peers.txt in this directory is "
+                "the peer list when --peers and --peers-file are omitted."
+            ),
+        ),
+    ] = None,
+    peers: Annotated[
+        str | None,
+        typer.Option(
+            "--peers",
+            help=(
+                "Comma-separated caller-supplied peers, 3 to 5, same industry and "
+                "listing region. Example: 珀莱雅,上海家化,贝泰妮,丸美股份. "
+                "The model does not invent this list."
+            ),
+        ),
+    ] = None,
+    peers_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--peers-file",
+            help=(
+                "Text file with one caller-supplied peer per line. Used when "
+                "--peers is omitted. A ticker may follow the name: 珀莱雅 603605.SS."
             ),
         ),
     ] = None,
@@ -158,6 +204,20 @@ def deep_note(
         raise typer.BadParameter("ticker is required")
 
     local_pack = _local_pack_from_research_dir(research_dir)
+    try:
+        peer_name_list = load_peer_names(
+            peers=peers,
+            peers_file=peers_file,
+            research_dir=research_dir,
+        )
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    company_filings = fetch_company_filings(
+        ticker,
+        as_of=date,
+        transcript_text=_local_transcript(research_dir),
+    )
+    peer_table = build_peer_table(peer_name_list)
 
     selected = _parse_analysts(analysts)
     config = build_deep_note_config(
@@ -172,7 +232,12 @@ def deep_note(
 
     graph = TradingAgentsGraph(selected_analysts=selected, config=config)
     final_state, rating = graph.propagate(
-        ticker, date, local_fundamental_pack=local_pack
+        ticker,
+        date,
+        local_fundamental_pack=local_pack,
+        company_filings=company_filings,
+        peer_table=peer_table,
+        peer_names="\n".join(peer_name_list),
     )
     report_path = graph.save_reports(final_state, ticker, save_path=out)
     mode = "research-mode (stops after Research Manager)" if research_mode else "full trading graph"

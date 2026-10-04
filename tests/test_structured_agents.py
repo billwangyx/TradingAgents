@@ -282,9 +282,12 @@ class TestResearchManagerAgent:
         llm.invoke.return_value = MagicMock(content=plain_response)
         rm = create_research_manager(llm)
         result = rm(_make_rm_state())
-        assert result["investment_plan"].startswith(plain_response)
-        assert "Gap: fundamentals_report is missing" in result["investment_plan"]
-        assert "Do not invent figures." in result["investment_plan"]
+        note = result["investment_plan"]
+        assert note.startswith("## 1. Company fundamentals")
+        assert note.index("## 1. Company fundamentals") < note.index("**Recommendation**:")
+        assert "**Recommendation**: Sell" in note
+        assert "Gap: fundamentals_report is missing" in note
+        assert "Do not invent figures." in note
 
 
 # ---------------------------------------------------------------------------

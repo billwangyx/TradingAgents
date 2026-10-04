@@ -109,7 +109,10 @@ Headless, one ticker, research-mode by default (stops after the research manager
 python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD
 python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD --out ./notes/HHH
 python -m tradingagents.cli deep-note --ticker HHH --date YYYY-MM-DD --research-dir ./research/HHH
+python -m tradingagents.cli deep-note --ticker 1318.HK --date YYYY-MM-DD --peers "珀莱雅,上海家化,贝泰妮,丸美股份"
 ```
+
+The note order is Company fundamentals (exchange filing text), Industry, Comparable companies (the `--peers` list, also `peers.txt` or `--peers-file`), Financials, then Trading conditions. `--peers` is passed through `load_peer_names` into `propagate(..., peer_names=, peer_table=)`.
 
 Analysts default to `deepseek-flash` (`deepseek-v4-flash`) when the provider is DeepSeek. Ticker news tries Yahoo, then Alpha Vantage, then Eastmoney/akshare, and sets `NEWS_EMPTY` only after that chain. YTD uses Yahoo `ytdReturn`, or the first close of the year through the last close when that field is empty or the quote returns 401.
 
