@@ -1,7 +1,13 @@
 """yfinance-based news data fetching functions."""
 
 import contextlib
+import http.client
+import logging
+import xml.etree.ElementTree as ET
 from datetime import datetime
+from email.utils import parsedate_to_datetime
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 import yfinance as yf
 from dateutil.relativedelta import relativedelta
@@ -9,6 +15,15 @@ from dateutil.relativedelta import relativedelta
 from .config import get_config
 from .stockstats_utils import yf_retry
 from .symbol_utils import normalize_symbol
+
+logger = logging.getLogger(__name__)
+
+# Yahoo Finance headline RSS. Used only after Ticker.get_news comes back empty.
+# A .HK symbol uses the HK feed; every other symbol uses the US feed.
+# Not Google News, and not the Eastmoney search API.
+_YAHOO_HEADLINE_RSS = "https://feeds.finance.yahoo.com/rss/2.0/headline"
+_RSS_UA = "tradingagents-research/1.0"
+_RSS_TIMEOUT = 10.0
 
 
 def _extract_article_data(article: dict) -> dict:
@@ -57,6 +72,98 @@ def _extract_article_data(article: dict) -> dict:
         }
 
 
+def yahoo_headline_rss_url(symbol: str) -> str:
+    """Yahoo headline RSS for ``symbol``. ``.HK`` selects the HK feed."""
+    ticker = (symbol or "").strip().upper()
+    if ticker.endswith(".HK"):
+        region, lang = "HK", "zh-Hant"
+    else:
+        region, lang = "US", "en-US"
+    query = urlencode({"s": ticker, "region": region, "lang": lang})
+    return f"{_YAHOO_HEADLINE_RSS}?{query}"
+
+
+def _parse_yahoo_rss(payload: bytes) -> list[dict]:
+    """Turn a Yahoo headline RSS document into the article dicts the formatter uses."""
+    root = ET.fromstring(payload)
+    items: list[dict] = []
+    for node in root.iter():
+        if _xml_local(node.tag) != "item":
+            continue
+        fields = {_xml_local(child.tag): child for child in list(node)}
+        title = _xml_text(fields.get("title"))
+        if not title:
+            continue
+        pub_date = None
+        pub_raw = _xml_text(fields.get("pubDate"))
+        if pub_raw:
+            with contextlib.suppress(ValueError, TypeError, IndexError):
+                pub_date = parsedate_to_datetime(pub_raw)
+        source = _xml_text(fields.get("source"))
+        items.append({
+            "title": title,
+            "summary": _xml_text(fields.get("description")),
+            "publisher": source or "Yahoo Finance",
+            "link": _xml_text(fields.get("link")),
+            "pub_date": pub_date,
+        })
+    return items
+
+
+def _xml_local(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
+
+
+def _xml_text(node) -> str:
+    if node is None or node.text is None:
+        return ""
+    return node.text.strip()
+
+
+def _fetch_yahoo_headline_rss(symbol: str) -> list[dict]:
+    """Read Yahoo headline RSS. Failures are an empty list, not invented headlines."""
+    url = yahoo_headline_rss_url(symbol)
+    req = Request(url, headers={"User-Agent": _RSS_UA})
+    try:
+        with urlopen(req, timeout=_RSS_TIMEOUT) as resp:
+            payload = resp.read()
+    except (OSError, http.client.HTTPException) as exc:
+        logger.warning("Yahoo headline RSS failed for %s: %s", symbol, exc)
+        return []
+    try:
+        return _parse_yahoo_rss(payload)
+    except ET.ParseError as exc:
+        logger.warning("Yahoo headline RSS parse failed for %s: %s", symbol, exc)
+        return []
+
+
+def _render_windowed_news(
+    ticker: str,
+    resolved: str,
+    start_date: str,
+    end_date: str,
+    start_dt: datetime,
+    end_dt: datetime,
+    items: list[dict],
+) -> str | None:
+    """Existing ticker-news markdown, or None when nothing falls in the window."""
+    news_str = ""
+    filtered_count = 0
+    for data in items:
+        if not _in_news_window(data.get("pub_date"), start_dt, end_dt):
+            continue
+        news_str += f"### {data.get('title') or 'No title'} (source: {data.get('publisher') or 'Unknown'})\n"
+        if data.get("summary"):
+            news_str += f"{data['summary']}\n"
+        if data.get("link"):
+            news_str += f"Link: {data['link']}\n"
+        news_str += "\n"
+        filtered_count += 1
+    if filtered_count == 0:
+        return None
+    return f"## {ticker}{resolved} News, from {start_date} to {end_date}:\n\n{news_str}"
+
+
 def _in_news_window(pub_date, start_dt, end_dt) -> bool:
     """Whether an article belongs in the [start_dt, end_dt] window.
 
@@ -96,39 +203,32 @@ def get_news_yfinance(
     try:
         stock = yf.Ticker(canonical)
         news = yf_retry(lambda: stock.get_news(count=article_limit))
-
-        if not news:
-            return f"No news found for {ticker}{resolved}"
-
-        # Parse date range for filtering
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-
-        news_str = ""
-        filtered_count = 0
-
-        for article in news:
-            data = _extract_article_data(article)
-
-            # Keep only articles within the requested window (look-ahead safe).
-            if not _in_news_window(data["pub_date"], start_dt, end_dt):
-                continue
-
-            news_str += f"### {data['title']} (source: {data['publisher']})\n"
-            if data["summary"]:
-                news_str += f"{data['summary']}\n"
-            if data["link"]:
-                news_str += f"Link: {data['link']}\n"
-            news_str += "\n"
-            filtered_count += 1
-
-        if filtered_count == 0:
-            return f"No news found for {ticker}{resolved} between {start_date} and {end_date}"
-
-        return f"## {ticker}{resolved} News, from {start_date} to {end_date}:\n\n{news_str}"
-
     except Exception as e:
         return f"Error fetching news for {ticker}: {str(e)}"
+
+    # Parse date range for filtering
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+
+    extracted = [_extract_article_data(article) for article in (news or [])]
+    rendered = _render_windowed_news(
+        ticker, resolved, start_date, end_date, start_dt, end_dt, extracted
+    )
+    if rendered:
+        return rendered
+
+    # Ticker.get_news was empty, or nothing in it fell inside the window.
+    # Read Yahoo's own headline RSS before this vendor counts as a miss.
+    rss_items = _fetch_yahoo_headline_rss(canonical)[:article_limit]
+    rendered = _render_windowed_news(
+        ticker, resolved, start_date, end_date, start_dt, end_dt, rss_items
+    )
+    if rendered:
+        return rendered
+
+    if not news:
+        return f"No news found for {ticker}{resolved}"
+    return f"No news found for {ticker}{resolved} between {start_date} and {end_date}"
 
 
 def get_global_news_yfinance(
